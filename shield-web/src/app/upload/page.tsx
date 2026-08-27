@@ -39,7 +39,9 @@ export default function UploadPage() {
         });
         
         if (!response.ok) {
-          throw new Error('API Error');
+          const errJson = await response.json().catch(() => null);
+          const errMsg = errJson?.error || errJson?.detail || '계약서 분석 서버에서 오류가 발생했습니다.';
+          throw new Error(errMsg);
         }
         
         setLoadingText('조항 분석 및 결과 생성 중...');
@@ -49,8 +51,8 @@ export default function UploadPage() {
         sessionStorage.setItem('analysisResult', JSON.stringify(data));
         
         router.push('/result');
-      } catch (error) {
-        alert('분석 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      } catch (error: any) {
+        alert(error.message || '분석 중 오류가 발생했습니다. 다시 시도해 주세요.');
         setIsUploading(false);
       }
     }

@@ -1,18 +1,32 @@
 import os
 import json
-import boto3
+import base64
 import asyncio
+from io import BytesIO
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from langchain_aws import BedrockEmbeddings
-from langchain_community.vectorstores import FAISS
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+import re
 
-app = FastAPI(title="AI Hackathon Backend API")
+try:
+    import PyPDF2
+except ImportError:
+    PyPDF2 = None
 
-# CORS Setup: Allows frontend to communicate with backend
+from PIL import Image
+from dotenv import load_dotenv
+from google import genai
+from google.genai import types
+
+# Load environment variables
+load_dotenv()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not GEMINI_API_KEY:
+    print("Warning: GEMINI_API_KEY not found in environment.")
+
+app = FastAPI(title="AI Hackathon Backend API (Gemini)")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -21,226 +35,165 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# S3 Configuration
-BUCKET_NAME = "hackathon-e1-t05-docs"
-S3_FILE_KEY = "s3_test.txt"
-FAISS_INDEX_DIR = "faiss_index"
-
-# AWS Clients (Make sure your environment has proper AWS credentials)
-s3_client = boto3.client('s3')
-bedrock_client = boto3.client(service_name='bedrock-runtime')
-
-def get_embeddings():
-    return BedrockEmbeddings(
-        client=bedrock_client,
-        model_id="amazon.titan-embed-text-v2:0"
-    )
-
-def load_vector_db():
-    embeddings = get_embeddings()
-    try:
-        # Load from disk
-        db = FAISS.load_local(FAISS_INDEX_DIR, embeddings, allow_dangerous_deserialization=True)
-        return db
-    except Exception as e:
-        print("FAISS Load Error:", e)
-        return None
-
-class ChatRequest(BaseModel):
-    query: str
-
-async def stream_bedrock_response(prompt_text: str):
-    body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 800,
-        "messages": [
-            {"role": "user", "content": prompt_text}
-        ]
-    })
-    
-    try:
-        response = bedrock_client.invoke_model_with_response_stream(
-            modelId="global.anthropic.claude-sonnet-5",
-            body=body
-        )
-        for event in response.get('body'):
-            chunk = json.loads(event.get('chunk').get('bytes').decode('utf-8'))
-            if chunk.get('type') == 'content_block_delta':
-                text = chunk.get('delta', {}).get('text', '')
-                # Server-Sent Events (SSE) format
-                yield f"data: {json.dumps({'text': text})}\n\n"
-            await asyncio.sleep(0.001) # Yield to event loop
-    except Exception as e:
-        yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    yield "data: [DONE]\n\n"
-
-@app.post("/api/chat")
-async def chat(request: ChatRequest):
-    query = request.query
-    db = load_vector_db()
-    
-    if db is None:
-        raise HTTPException(status_code=400, detail="FAISS index not found. Please upload a document first.")
-        
-    # Similarity Search
-    docs = db.similarity_search(query, k=4)
-    context_text = "\n---\n".join([doc.page_content for doc in docs])
-    
-    augmented_prompt = f"""
-당신은 친절한 안내원입니다. 아래 주어진 [참고문서]를 바탕으로 질문에 답하세요.
-참고문서에 없는 질문은 모른다고 명확히 답해야 합니다.
-
-[참고문서]
-{context_text}
-
-질문: {query}
-답변:
-"""
-    return StreamingResponse(stream_bedrock_response(augmented_prompt), media_type="text/event-stream")
-
-@app.post("/api/upload")
-async def upload_document(file: UploadFile = File(...)):
-    try:
-        print(f"Uploading file {file.filename} to S3...")
-        # 1. S3 Upload
-        s3_client.upload_fileobj(file.file, BUCKET_NAME, S3_FILE_KEY)
-        
-        print("Downloading from S3 for validation...")
-        # 2. Download from S3
-        local_file_name = "downloaded_context.txt"
-        s3_client.download_file(BUCKET_NAME, S3_FILE_KEY, local_file_name)
-        
-        print("Chunking text...")
-        # 3. Read and Chunk
-        with open(local_file_name, 'r', encoding='utf-8') as f:
-            text = f.read()
-            
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-        docs = text_splitter.create_documents([text])
-        
-        print(f"Creating FAISS index with {len(docs)} chunks...")
-        # 4. Create Embeddings & FAISS
-        embeddings = get_embeddings()
-        db = FAISS.from_documents(docs, embeddings)
-        
-        print("Saving FAISS index locally...")
-        # 5. Save locally
-        db.save_local(FAISS_INDEX_DIR)
-        
-        return {"message": "업로드 및 벡터 DB 갱신 성공", "chunks": len(docs)}
-        
-    except Exception as e:
-        print("Upload Error:", e)
-        raise HTTPException(status_code=500, detail=str(e))
-
-import base64
-import PyPDF2
-from io import BytesIO
-
-@app.post("/api/analyze_contract")
-async def analyze_contract(file: UploadFile = File(...)):
-    contents = await file.read()
-    filename = file.filename.lower()
-    
+def parse_contract_sync(contents: bytes, filename: str):
     text_content = ""
-    image_blocks = []
+    image_parts = []
     
     if filename.endswith(".pdf"):
         try:
-            pdf_reader = PyPDF2.PdfReader(BytesIO(contents))
-            for page in pdf_reader.pages:
-                text_content += page.extract_text() + "\n"
+            if PyPDF2:
+                pdf_reader = PyPDF2.PdfReader(BytesIO(contents))
+                for page in pdf_reader.pages:
+                    extracted = page.extract_text()
+                    if extracted:
+                        text_content += extracted + "\n"
+            else:
+                text_content = ""
         except Exception as e:
-            raise HTTPException(status_code=400, detail="PDF 파싱 실패")
-    elif filename.endswith((".png", ".jpg", ".jpeg")):
-        base64_img = base64.b64encode(contents).decode('utf-8')
-        mime_type = "image/png" if filename.endswith(".png") else "image/jpeg"
-        image_blocks.append({
-            "type": "image",
-            "source": {
-                "type": "base64",
-                "media_type": mime_type,
-                "data": base64_img
-            }
-        })
+            print("PDF extraction warning:", e)
+            
+        if not text_content.strip():
+            text_content = "(주의: 이 PDF 파일은 텍스트가 직접 추출되지 않는 스캔본/이미지 기반 문서입니다. 텍스트 추출이 불가능할 경우 관련 사항을 안내해 주세요.)"
+            
+    elif filename.endswith((".png", ".jpg", ".jpeg", ".webp")):
+        try:
+            img = Image.open(BytesIO(contents))
+            if img.mode in ("RGBA", "P"):
+                img = img.convert("RGB")
+            
+            # Gemini supports PIL Images directly
+            max_dim = 800
+            if max(img.size) > max_dim:
+                img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+                
+            image_parts.append(img)
+        except Exception as img_err:
+            print("Image optimization fallback:", img_err)
+            raise HTTPException(status_code=400, detail="이미지 처리 중 오류가 발생했습니다.")
     else:
         raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다. (PDF, PNG, JPG만 가능)")
 
-    messages = []
-    content_block = []
-    
-    if text_content:
-        content_block.append({"type": "text", "text": f"다음은 계약서 텍스트입니다:\n\n{text_content}"})
-    
-    if image_blocks:
-        content_block.extend(image_blocks)
-        content_block.append({"type": "text", "text": "위 이미지는 계약서 원본입니다."})
-
     prompt_instructions = """
-당신은 대한민국 최고의 노무사 및 부동산 변호사 AI입니다. 제공된 계약서(텍스트 또는 이미지)를 철저히 분석하세요.
-분석 후 **반드시 아래 JSON 형식으로만** 응답하세요. 다른 설명이나 마크다운 코드블록(```json 등)은 절대 포함하지 말고 순수 JSON 문자열만 출력하세요.
+당신은 대한민국 최고의 노동법/부동산 전문 법률 AI입니다. 제공된 계약서(텍스트 또는 이미지)를 철저히 검토하고 분석하세요.
+반드시 아래 정의된 JSON 구조로만 응답해야 하며, 서론이나 결론, 추가 설명 없이 순수 JSON 문자열만 출력하세요.
 
 {
   "summary": {
-    "wage": "시급 9,500원 (또는 해당사항 없음)",
-    "hours": "주 20시간 (또는 해당사항 없음)",
-    "period": "6개월 (또는 해당사항 없음)"
+    "wage": "시급/월급/보증금 등 금액 관련 명시 내용 (없으면 '확인불가')",
+    "hours": "근로시간 또는 거주/계약 조건 (없으면 '확인불가')",
+    "period": "계약 기간 (없으면 '확인불가')"
   },
   "risks": [
     {
-      "title": "지각 시 1만원 차감",
-      "description": "근로기준법상 위약금 예정 금지에 위배될 소지가 있습니다.",
-      "level": "yellow"
+      "title": "위험/불리한 조항 제목",
+      "description": "이 조항이 왜 문제인지 친한 노무사나 멘토가 조언해 주듯, 이해하기 쉬운 말투(~해요, ~합니다)로 부드럽게 설명해 주세요.",
+      "level": "red"
     }
   ],
   "missing": [
     {
-      "title": "주휴수당 조항 누락",
-      "description": "주 15시간 이상 근무하므로 주휴수당 지급 대상입니다.",
-      "estimated_loss": "약 99만원"
+      "title": "누락된 필수/보호 조항",
+      "description": "어떤 조항이 빠졌고 이로 인해 어떤 불이익이 생길 수 있는지, 친근하게 충고하는 말투(~해요, ~합니다)로 설명해 주세요.",
+      "estimated_loss": "예상 피해/손실액 또는 위험 정도 (예: 약 50만원 손실 우려, 보증금 미반환 위험)"
     }
-  ],
-  "negotiation": {
-    "soft": "부드러운 톤의 카톡 메시지...",
-    "firm": "단호한 톤의 카톡 메시지...",
-    "formal": "공식적인 톤의 카톡 메시지..."
-  }
+  ]
 }
 
 규칙:
-1. risks의 level은 "red", "yellow", "green" 중 하나여야 합니다.
-2. 분석할 내용이 없으면 빈 배열([])을 반환하세요.
-3. negotiation 메시지는 사용자가 상대방(사장님/집주인)에게 카카오톡으로 보낼 수 있게 자연스럽게 작성하세요.
+1. risks의 level은 반드시 "red", "yellow", "green" 중 하나여야 합니다.
+2. 계약서 내용이 명확하지 않거나 식별이 불가능한 경우에도 JSON 구조를 유지하고 각 항목에 안내 문구를 넣어 완성된 JSON을 반환하세요.
+3. 설명(description)은 딱딱한 법률 용어를 최소화하고 일반인이 이해하기 쉬운 자연스러운 조언 톤을 유지하세요.
+4. 마크다운 코드블록(```json 등) 없이 JSON만 출력하세요.
+5. 응답 내용에 이모티콘(🚨, ⚠️, 😊 등)을 절대 포함하지 마세요.
 """
 
-    content_block.append({"type": "text", "text": prompt_instructions})
-    messages.append({"role": "user", "content": content_block})
-
-    body = json.dumps({
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 2000,
-        "messages": messages,
-        "temperature": 0.1
-    })
+    gemini_prompt = [prompt_instructions]
+    if text_content:
+        gemini_prompt.append(f"다음은 계약서 텍스트입니다:\n\n{text_content}")
+    if image_parts:
+        gemini_prompt.extend(image_parts)
+        gemini_prompt.append("위 이미지는 분석할 계약서 문서입니다.")
 
     try:
-        response = bedrock_client.invoke_model(
-            modelId="global.anthropic.claude-sonnet-5",
-            body=body
-        )
-        response_body = json.loads(response.get('body').read())
-        result_text = response_body.get("content")[0].get("text")
+        print(f"Calling Gemini for {filename}...")
+        client = genai.Client(api_key=GEMINI_API_KEY)
         
-        result_text = result_text.strip()
-        if result_text.startswith("```json"):
-            result_text = result_text[7:]
-        if result_text.endswith("```"):
-            result_text = result_text[:-3]
+        response = client.models.generate_content(
+            model='gemini-3.5-flash-lite',
+            contents=gemini_prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                max_output_tokens=3000,
+                response_mime_type="application/json"
+            )
+        )
+        result_text = response.text
+        if not result_text:
+            raise ValueError("No text returned from Gemini API")
             
-        parsed_json = json.loads(result_text.strip())
-        return parsed_json
     except Exception as e:
-        print("Bedrock Error:", str(e))
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"Gemini Error in analyze_contract: {str(e)}")
+        raise e
+        
+    print("Raw Gemini Response preview:", result_text[:150] + "...")
+    
+    # JSON extraction with robust markdown stripping and regex
+    cleaned_text = result_text.strip()
+    if cleaned_text.startswith("```json"):
+        cleaned_text = cleaned_text[7:]
+    if cleaned_text.startswith("```"):
+        cleaned_text = cleaned_text[3:]
+    if cleaned_text.endswith("```"):
+        cleaned_text = cleaned_text[:-3]
+    cleaned_text = cleaned_text.strip()
 
+    match = re.search(r'\{[\s\S]*\}', cleaned_text)
+    if match:
+        json_str = match.group(0)
+    else:
+        json_str = cleaned_text
+
+    try:
+        parsed_json = json.loads(json_str, strict=False)
+    except Exception as json_err:
+        print("Initial JSON parse failed, cleaning control characters:", json_err)
+        cleaned_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', lambda m: ' ' if m.group(0) not in '\r\n\t' else m.group(0), json_str)
+        try:
+            parsed_json = json.loads(cleaned_str, strict=False)
+        except Exception as final_err:
+            print("Failed to parse JSON directly. Constructing fallback structure. Error:", final_err)
+            parsed_json = {
+                "summary": {
+                    "wage": "분석 완료",
+                    "hours": "본문 참조",
+                    "period": "본문 참조"
+                },
+                "risks": [
+                    {
+                        "title": "계약서 분석 오류",
+                        "description": "분석을 완료했으나 데이터를 구조화하는 데 실패했습니다.",
+                        "level": "yellow"
+                    }
+                ],
+                "missing": []
+            }
+        
+    return parsed_json
+
+@app.post("/api/analyze_contract")
+async def analyze_contract(file: UploadFile = File(...)):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="Gemini API Key is missing. Please add it to the .env file.")
+        
+    contents = await file.read()
+    filename = file.filename.lower()
+    
+    try:
+        # Run synchronous blocking genai / PIL / PyPDF2 in a worker thread
+        parsed_json = await asyncio.to_thread(parse_contract_sync, contents, filename)
+        return parsed_json
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in analyze_contract:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))

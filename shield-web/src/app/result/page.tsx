@@ -42,7 +42,7 @@ export default function ResultPage() {
     );
   }
 
-  const { summary, risks, missing, negotiation } = resultData;
+  const { summary, risks, missing } = resultData;
   const missingLoss = missing && missing.length > 0 ? missing[0].estimated_loss : "없음";
 
   return (
@@ -84,7 +84,7 @@ export default function ResultPage() {
         {/* Number Verification */}
         <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-6 flex flex-col md:flex-row justify-between items-center gap-4 transition-colors">
           <div>
-            <h3 className="text-sm text-gray-500 dark:text-gray-400 mb-1">계약서에서 이렇게 읽었어요</h3>
+            <h3 className="text-sm text-gray-500 dark:text-gray-400 mb-1">계약서 요약 정보</h3>
             <div className="flex flex-wrap gap-6 mt-2">
               <div>
                 <span className="text-gray-500 text-sm block">시급/임금 </span>
@@ -104,7 +104,7 @@ export default function ResultPage() {
 
         {/* Headline */}
         <div className="text-center py-6">
-          <h2 className="text-4xl font-bold mb-2">위험 {risks?.length || 0}건 · 누락 {missing?.length || 0}건</h2>
+          <h2 className="text-4xl font-bold mb-2">위험 조항 {risks?.length || 0}건 · 누락 조항 {missing?.length || 0}건</h2>
           {missing && missing.length > 0 && (
             <p className="text-xl text-red-600 dark:text-red-400 font-semibold bg-red-50 dark:bg-red-900/20 inline-block px-6 py-2 rounded-full border border-red-200 dark:border-red-800 transition-colors mt-2">
               예상 누락 손실액: {missingLoss}
@@ -116,14 +116,19 @@ export default function ResultPage() {
         {missing && missing.map((item: any, i: number) => (
           <div key={`missing-${i}`} className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-6 transition-colors">
             <div className="flex items-start gap-4">
-              <div className="text-3xl">🚨</div>
-              <div>
+              <div className="text-red-700 dark:text-red-400">
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <div className="flex-1">
                 <h3 className="text-xl font-bold text-red-700 dark:text-red-400 mb-2">{item.title}</h3>
-                <p className="text-gray-800 dark:text-gray-300 mb-4 leading-relaxed">
+                <div className="text-gray-800 dark:text-gray-300 mb-4 leading-relaxed bg-white/50 dark:bg-black/20 p-4 rounded-lg">
+                  <span className="font-semibold block mb-1">누락 사유 및 문제점:</span>
                   {item.description}
-                </p>
-                <div className="text-sm text-gray-600 dark:text-gray-400 bg-red-100 dark:bg-black/30 p-3 rounded-lg inline-block transition-colors">
-                  예상 손실액: {item.estimated_loss}
+                </div>
+                <div className="text-sm font-medium text-red-800 dark:text-red-300 bg-red-100 dark:bg-red-900/50 px-4 py-2 rounded-lg inline-block transition-colors">
+                  예상 피해/손실액: {item.estimated_loss}
                 </div>
               </div>
             </div>
@@ -132,56 +137,25 @@ export default function ResultPage() {
 
         {/* Risk Clauses */}
         {risks && risks.map((item: any, i: number) => (
-          <div key={`risk-${i}`} className={`border rounded-2xl p-6 transition-colors ${item.level === 'red' ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'}`}>
+          <div key={`risk-${i}`} className={`border rounded-2xl p-6 transition-colors ${item.level === 'red' ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800' : 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'}`}>
             <div className="flex items-start gap-4">
-              <div className="text-3xl">{item.level === 'red' ? '⚠️' : '⚡'}</div>
-              <div>
-                <h3 className={`text-xl font-bold mb-2 ${item.level === 'red' ? 'text-red-700 dark:text-red-500' : 'text-yellow-700 dark:text-yellow-500'}`}>{item.title}</h3>
-                <p className="text-gray-800 dark:text-gray-300 mb-4 leading-relaxed">
+              <div className={item.level === 'red' ? 'text-orange-700 dark:text-orange-500' : 'text-yellow-700 dark:text-yellow-500'}>
+                <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className={`text-xl font-bold mb-2 ${item.level === 'red' ? 'text-orange-800 dark:text-orange-400' : 'text-yellow-800 dark:text-yellow-400'}`}>{item.title}</h3>
+                <div className="text-gray-800 dark:text-gray-300 leading-relaxed bg-white/50 dark:bg-black/20 p-4 rounded-lg">
+                  <span className="font-semibold block mb-1">위험 사유 및 문제점:</span>
                   {item.description}
-                </p>
+                </div>
               </div>
             </div>
           </div>
         ))}
 
       </div>
-
-      {/* Bottom Sheet - AI Negotiator */}
-      {negotiation && (
-        <div className="fixed bottom-0 left-0 w-full bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-6 md:p-8 shadow-2xl z-40 transition-colors duration-200">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-2xl font-bold flex items-center gap-2">
-                <span className="text-blue-500">💬</span> AI 협상 코치
-              </h3>
-            </div>
-            
-            <div className="flex gap-2 mb-6">
-              <button onClick={() => setActiveTone('soft')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${activeTone === 'soft' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>😊 부드럽게</button>
-              <button onClick={() => setActiveTone('firm')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${activeTone === 'firm' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>🙂 단호하게</button>
-              <button onClick={() => setActiveTone('formal')} className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${activeTone === 'formal' ? 'bg-blue-600 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'}`}>😐 공식적으로</button>
-            </div>
-
-            <div className="bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-6 relative transition-colors">
-              <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{negotiation[activeTone]}</p>
-              
-              <button 
-                className="absolute top-4 right-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
-                onClick={() => {
-                  navigator.clipboard.writeText(negotiation[activeTone]);
-                  alert('클립보드에 복사되었습니다!');
-                }}
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-                복사
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
