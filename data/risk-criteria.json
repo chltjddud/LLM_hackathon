@@ -1,0 +1,47 @@
+[
+  {
+    "id": "deposit_return_delay",
+    "domain": "임대차",
+    "category": "보증금 반환",
+    "keyword_hint": ["보증금 반환", "다음 세입자", "임차인을 구해야"],
+    "risk_level": "위험",
+    "law_basis": "주택임대차보호법 제3조의2, 제4조",
+    "explanation": "임대인은 계약 종료 시 다음 세입자 여부와 무관하게 보증금을 반환할 의무가 있습니다. '다음 세입자를 구해야 반환한다'는 조항은 무효 소지가 큽니다."
+  },
+  {
+    "id": "excessive_restoration",
+    "domain": "임대차",
+    "category": "원상복구",
+    "keyword_hint": ["원상복구", "전액 부담", "모든 하자"],
+    "risk_level": "주의",
+    "law_basis": "민법 제615조, 주택임대차보호법 취지",
+    "explanation": "통상적인 사용에 따른 자연 마모(도배, 장판 등)까지 세입자에게 원상복구 책임을 지우는 조항은 과도할 수 있습니다."
+  },
+  {
+    "id": "penalty_clause",
+    "domain": "근로",
+    "category": "위약금/손해배상 예정",
+    "keyword_hint": ["위약금", "손해배상 예정액", "조기 퇴사 시 벌금"],
+    "risk_level": "위험",
+    "law_basis": "근로기준법 제20조",
+    "explanation": "근로계약 불이행에 대한 위약금이나 손해배상액을 미리 정하는 계약은 근로기준법상 금지됩니다."
+  },
+  {
+    "id": "below_minimum_wage",
+    "domain": "근로",
+    "category": "최저임금 미달",
+    "keyword_hint": ["시급", "시간당"],
+    "risk_level": "위험",
+    "law_basis": "최저임금법 제6조",
+    "explanation": "해당 연도 최저임금보다 낮은 시급을 명시한 조항은 무효이며, 최저임금이 적용됩니다."
+  },
+  {
+    "id": "no_weekly_holiday_pay",
+    "domain": "근로",
+    "category": "주휴수당 미지급",
+    "keyword_hint": ["주휴수당 미지급", "주휴수당 별도"],
+    "risk_level": "주의",
+    "law_basis": "근로기준법 제55조",
+    "explanation": "일정 요건(주 15시간 이상 근무 등)을 충족하면 주휴수당 지급 의무가 발생합니다. 미지급 명시 조항은 무효일 수 있습니다."
+  }
+]

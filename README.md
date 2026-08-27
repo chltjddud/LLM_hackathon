@@ -1,36 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 자취 계약서 리스크 도우미
 
-## Getting Started
+임대차/알바 계약서 사진을 올리면 위험 조항을 짚어주고, 그대로 계약이 진행됐을 때의 시뮬레이션과 집주인/사장님에게 보낼 메시지 초안을 만들어주는 서비스.
 
-First, run the development server:
+## 시작하기
 
 ```bash
+npm install
+cp .env.local.example .env.local   # ANTHROPIC_API_KEY 값 채워넣기
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+http://localhost:3000 에서 확인.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 구조
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `src/app/page.tsx` — 업로드/결과 화면 (프론트)
+- `src/app/api/analyze/route.ts` — 사진 분석 API 라우트 (백엔드)
+- `data/risk-criteria.json` — 위험 조항 판단 기준표 (기획). 새 카테고리 추가 시 이 파일에 항목 추가.
 
-## Learn More
+## 역할
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- 기획/디자인: 위험 조항 기준표(`data/risk-criteria.json`) 리서치·보강, 화면 와이어프레임
+- 프론트엔드: 업로드 화면, 결과 화면(조항 카드/위험도 뱃지/시뮬레이션/메시지 탭)
+- 백엔드/프롬프트: `api/analyze` 파이프라인, 프롬프트 튜닝
