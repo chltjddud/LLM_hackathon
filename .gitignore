@@ -1,0 +1,23 @@
+# Secrets & Keys (CRITICAL SECURITY)
+*.pem
+*.key
+.env
+
+# Local DB & Data
+faiss_index/
+downloaded_context.txt
+rich_context.txt
+s3_test.txt
+
+# Logs
+*.log
+streamlit.log
+
+# Python Caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OS Files
+.DS_Store
+Thumbs.db
