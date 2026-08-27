@@ -6,3 +6,4 @@ langchain-aws
 langchain-community
 faiss-cpu
 pydantic
+PyPDF2
