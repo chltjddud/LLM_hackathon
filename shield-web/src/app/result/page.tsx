@@ -2,6 +2,134 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
+const CoachSection = ({ title, description }: { title: string, description: string }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [tone, setTone] = useState<'soft' | 'firm' | 'formal'>('soft');
+  const [loading, setLoading] = useState(false);
+  const [coachData, setCoachData] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchCoachData = async (selectedTone: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('http://localhost:8000/api/coach', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, tone: selectedTone })
+      });
+      if (!res.ok) throw new Error('협상 코치 정보를 불러오는 데 실패했습니다.');
+      const data = await res.json();
+      setCoachData(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpen = () => {
+    if (!isOpen) {
+      setIsOpen(true);
+      if (!coachData) fetchCoachData(tone);
+    } else {
+      setIsOpen(false);
+    }
+  };
+
+  const handleToneChange = (newTone: 'soft' | 'firm' | 'formal') => {
+    setTone(newTone);
+    fetchCoachData(newTone);
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    alert('복사되었습니다!');
+  };
+
+  return (
+    <div className="mt-4">
+      <button 
+        onClick={handleOpen}
+        className="text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 dark:text-blue-400 dark:bg-blue-900/30 dark:hover:bg-blue-900/50 px-4 py-2 rounded-lg transition-colors flex items-center gap-2"
+      >
+        <span>💡 이 조항에 대해 어떻게 말할지 AI 코치 받기</span>
+        <svg className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {isOpen && (
+        <div className="mt-4 border border-blue-100 dark:border-blue-900/50 rounded-xl p-4 bg-white dark:bg-gray-800">
+          <div className="flex gap-2 mb-4">
+            {(['soft', 'firm', 'formal'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => handleToneChange(t)}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors ${tone === t ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-300'}`}
+              >
+                {t === 'soft' ? '😊 부드럽게' : t === 'firm' ? '🙂 정중하게' : '😐 공식적으로'}
+              </button>
+            ))}
+          </div>
+          
+          {loading ? (
+            <div className="animate-pulse flex space-x-4">
+              <div className="flex-1 space-y-4 py-1">
+                <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded col-span-2"></div>
+                    <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded col-span-1"></div>
+                  </div>
+                  <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                </div>
+              </div>
+            </div>
+          ) : error ? (
+            <p className="text-red-500 text-sm">{error}</p>
+          ) : coachData ? (
+            <div className="space-y-4">
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg relative group">
+                <button 
+                  onClick={() => copyToClipboard(coachData.message)}
+                  className="absolute top-2 right-2 p-1.5 bg-white dark:bg-gray-700 shadow-sm rounded-md text-gray-500 hover:text-gray-700 dark:text-gray-300 opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="복사하기"
+                >
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                </button>
+                <p className="text-gray-800 dark:text-gray-200 whitespace-pre-wrap text-sm leading-relaxed">{coachData.message}</p>
+              </div>
+              
+              {coachData.rebuttals && coachData.rebuttals.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">상대방의 예상 반응과 대처법</h4>
+                  <div className="space-y-2">
+                    {coachData.rebuttals.map((r: any, idx: number) => (
+                      <div key={idx} className="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-sm">
+                        <div className="text-red-600 dark:text-red-400 font-medium mb-1 flex items-start gap-2">
+                          <span className="text-xs bg-red-100 dark:bg-red-900/30 px-1.5 rounded min-w-[32px] text-center">예상</span>
+                          <span>{r.if_they_say}</span>
+                        </div>
+                        <div className="text-blue-600 dark:text-blue-400 font-medium flex items-start gap-2">
+                          <span className="text-xs bg-blue-100 dark:bg-blue-900/30 px-1.5 rounded min-w-[32px] text-center">답변</span>
+                          <span>{r.reply}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function ResultPage() {
   const [activeTone, setActiveTone] = useState<'soft' | 'firm' | 'formal'>('soft');
   const [isDark, setIsDark] = useState(false);
@@ -130,6 +258,7 @@ export default function ResultPage() {
                 <div className="text-sm font-medium text-red-800 dark:text-red-300 bg-red-100 dark:bg-red-900/50 px-4 py-2 rounded-lg inline-block transition-colors">
                   예상 피해/손실액: {item.estimated_loss}
                 </div>
+                <CoachSection title={item.title} description={item.description} />
               </div>
             </div>
           </div>
@@ -150,6 +279,7 @@ export default function ResultPage() {
                   <span className="font-semibold block mb-1">위험 사유 및 문제점:</span>
                   {item.description}
                 </div>
+                <CoachSection title={item.title} description={item.description} />
               </div>
             </div>
           </div>

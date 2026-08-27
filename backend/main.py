@@ -8,6 +8,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import re
 
+class CoachRequest(BaseModel):
+    title: str
+    description: str
+    tone: str
+
 try:
     import PyPDF2
 except ImportError:
@@ -195,3 +200,70 @@ async def analyze_contract(file: UploadFile = File(...)):
     except Exception as e:
         print("Error in analyze_contract:", str(e))
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/coach")
+async def ai_coach(request: CoachRequest):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="Gemini API Key is missing.")
+        
+    prompt = f"""
+당신은 대한민국 최고의 노동법/부동산 전문 법률 AI이자 협상 코치입니다.
+사용자가 다음 계약서 조항(문제점)에 대해 상대방(집주인/사장님)과 협상하려고 합니다.
+
+문제 조항: {request.title}
+상세 내용: {request.description}
+원하는 어투(톤): {request.tone} 
+(soft: 질문형으로 부드럽게, firm: 정중하지만 사실에 기반하여 분명하게, formal: 단호하고 공식적인 통보형)
+
+반드시 아래 정의된 JSON 구조로만 응답해야 하며, 다른 텍스트는 출력하지 마세요.
+{{
+  "message": "상대방에게 카카오톡이나 문자로 직접 보낼 수 있는 협상 메시지 (3~5문장 내외)",
+  "rebuttals": [
+    {{
+      "if_they_say": "상대방의 예상 부정적 반응 1",
+      "reply": "그에 대한 사용자의 재반박/답변"
+    }},
+    {{
+      "if_they_say": "상대방의 예상 부정적 반응 2",
+      "reply": "그에 대한 사용자의 재반박/답변"
+    }}
+  ]
+}}
+마크다운 코드블록(```json 등) 없이 JSON만 출력하세요.
+"""
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model='gemini-3.5-flash-lite',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                temperature=0.7,
+                max_output_tokens=1000,
+                response_mime_type="application/json"
+            )
+        )
+        result_text = response.text
+        if not result_text:
+            raise ValueError("No text returned from Gemini API")
+            
+        cleaned_text = result_text.strip()
+        if cleaned_text.startswith("```json"):
+            cleaned_text = cleaned_text[7:]
+        if cleaned_text.startswith("```"):
+            cleaned_text = cleaned_text[3:]
+        if cleaned_text.endswith("```"):
+            cleaned_text = cleaned_text[:-3]
+        cleaned_text = cleaned_text.strip()
+
+        match = re.search(r'\{[\s\S]*\}', cleaned_text)
+        if match:
+            json_str = match.group(0)
+        else:
+            json_str = cleaned_text
+
+        parsed_json = json.loads(json_str, strict=False)
+        return parsed_json
+    except Exception as e:
+        print("Error in ai_coach:", str(e))
+        raise HTTPException(status_code=500, detail="협상 코치 결과를 생성하는 중 오류가 발생했습니다.")
