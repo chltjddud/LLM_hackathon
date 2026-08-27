@@ -1,4 +1,6 @@
+'use client';
 import React from 'react';
+import Link from 'next/link';
 
 export default function Home() {
   return (
@@ -14,9 +16,9 @@ export default function Home() {
           </div>
           <div className="flex items-center gap-4 text-sm font-medium">
             <button className="text-gray-300 hover:text-white transition-colors">로그인</button>
-            <button className="bg-white text-black px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors">
+            <Link href="/upload" className="bg-white text-black px-4 py-2 rounded-lg hover:bg-gray-200 transition-colors">
               시작하기
-            </button>
+            </Link>
           </div>
         </div>
       </nav>
@@ -38,13 +40,13 @@ export default function Home() {
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <button className="group w-full sm:w-auto bg-white text-black px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2">
+            <Link href="/upload" className="group w-full sm:w-auto bg-white text-black px-8 py-4 rounded-xl font-semibold text-lg hover:bg-gray-100 transition-all flex items-center justify-center gap-2">
               계약서 스캔 시작하기
               <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
               </svg>
-            </button>
-            <button className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold text-lg border border-white/20 hover:bg-white/5 transition-colors">
+            </Link>
+            <button className="w-full sm:w-auto px-8 py-4 rounded-xl font-semibold text-lg border border-white/20 hover:bg-white/5 transition-colors" onClick={() => alert("데모 영상은 준비 중입니다!")}>
               데모 보기
             </button>
           </div>
