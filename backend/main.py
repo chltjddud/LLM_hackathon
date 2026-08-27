@@ -2,6 +2,8 @@ import os
 import json
 import base64
 import asyncio
+import uuid
+from datetime import datetime
 from io import BytesIO
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +14,14 @@ class CoachRequest(BaseModel):
     title: str
     description: str
     tone: str
+
+class MessageRequest(BaseModel):
+    message: str
+
+class SignRequest(BaseModel):
+    signature: str
+
+SESSIONS = {}
 
 try:
     import PyPDF2
@@ -267,3 +277,72 @@ async def ai_coach(request: CoachRequest):
     except Exception as e:
         print("Error in ai_coach:", str(e))
         raise HTTPException(status_code=500, detail="협상 코치 결과를 생성하는 중 오류가 발생했습니다.")
+
+@app.post("/api/session")
+async def create_session(file: UploadFile = File(...)):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="Gemini API Key is missing.")
+        
+    contents = await file.read()
+    filename = file.filename.lower()
+    
+    try:
+        # Run synchronous blocking genai / PIL / PyPDF2 in a worker thread
+        parsed_json = await asyncio.to_thread(parse_contract_sync, contents, filename)
+        
+        session_id = str(uuid.uuid4())
+        SESSIONS[session_id] = {
+            "id": session_id,
+            "contract_data": parsed_json,
+            "messages": [],
+            "resolved_clauses": [],
+            "signature": None,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        return {"session_id": session_id, "status": "created"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print("Error in create_session:", str(e))
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/session/{session_id}")
+async def get_session(session_id: str):
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return SESSIONS[session_id]
+
+@app.post("/api/session/{session_id}/message")
+async def post_message(session_id: str, request: MessageRequest):
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    msg_data = {
+        "sender": "user",
+        "text": request.message,
+        "timestamp": datetime.now().isoformat()
+    }
+    SESSIONS[session_id]["messages"].append(msg_data)
+    
+    return {"status": "success", "message_added": msg_data}
+
+@app.post("/api/session/{session_id}/clause/{clause_id}/resolve")
+async def resolve_clause(session_id: str, clause_id: str):
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    if clause_id not in SESSIONS[session_id]["resolved_clauses"]:
+        SESSIONS[session_id]["resolved_clauses"].append(clause_id)
+        
+    return {"status": "resolved", "clause_id": clause_id, "resolved_clauses": SESSIONS[session_id]["resolved_clauses"]}
+
+@app.post("/api/session/{session_id}/sign")
+async def sign_session(session_id: str, request: SignRequest):
+    if session_id not in SESSIONS:
+        raise HTTPException(status_code=404, detail="Session not found")
+        
+    SESSIONS[session_id]["signature"] = request.signature
+    SESSIONS[session_id]["signed_at"] = datetime.now().isoformat()
+    
+    return {"status": "signed", "session_id": session_id}
