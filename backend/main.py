@@ -134,8 +134,6 @@ def parse_contract_sync(contents: bytes, filename: str):
     except Exception as e:
         print(f"Gemini Error in analyze_contract: {str(e)}")
         raise e
-        
-    print("Raw Gemini Response preview:", result_text[:150] + "...")
     
     # JSON extraction with robust markdown stripping and regex
     cleaned_text = result_text.strip()

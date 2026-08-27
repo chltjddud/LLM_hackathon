@@ -1,10 +1,8 @@
 fastapi
 uvicorn
 python-multipart
-boto3
-langchain-aws
-langchain-community
-faiss-cpu
 pydantic
 PyPDF2
 Pillow
+google-genai
+python-dotenv
