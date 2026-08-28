@@ -93,8 +93,8 @@ export default function Home() {
   }, {} as Record<string, number>);
 
   return (
-    <div className="min-h-screen bg-zinc-50 px-4 py-16">
-      <main className="mx-auto max-w-2xl">
+    <div className="flex min-h-screen justify-center bg-zinc-200 sm:py-8">
+      <main className="min-h-screen w-full max-w-md bg-zinc-50 px-4 py-10 sm:min-h-0 sm:rounded-3xl sm:border sm:border-zinc-300 sm:shadow-xl">
         <h1 className="text-2xl font-bold text-zinc-900">자취 계약서 리스크 도우미</h1>
         <p className="mt-2 text-zinc-600">임대차/알바 계약서 사진을 올리면 위험 조항을 찾아드려요.</p>
 
