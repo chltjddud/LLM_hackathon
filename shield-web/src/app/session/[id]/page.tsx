@@ -225,8 +225,30 @@ export default function SessionPage() {
     const origin = window.location.origin;
     const otherRole = role === 'tenant' ? 'landlord' : 'tenant';
     const link = `${origin}/session/${id}?role=${otherRole}`;
-    navigator.clipboard.writeText(link);
-    alert('상대방에게 공유할 협상 링크가 복사되었습니다!');
+    
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(link).then(() => {
+        alert('상대방에게 공유할 협상 링크가 복사되었습니다!');
+      }).catch(err => {
+        console.error('Failed to copy link: ', err);
+      });
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = link;
+      textArea.style.position = "absolute";
+      textArea.style.left = "-999999px";
+      document.body.prepend(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        alert('상대방에게 공유할 협상 링크가 복사되었습니다!');
+      } catch (error) {
+        console.error(error);
+        alert('링크 복사에 실패했습니다. 수동으로 복사해주세요: ' + link);
+      } finally {
+        textArea.remove();
+      }
+    }
   };
 
   if (isLoading) {
