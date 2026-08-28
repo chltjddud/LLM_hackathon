@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 
-const base = "http://localhost:3000";
+const base = process.argv[3] || "http://localhost:3000";
 const imageBase64 = readFileSync("sample/샘플B_임대차계약서_함정.png").toString("base64");
 
 console.log("1) 세션 생성 (사진 업로드)...");
@@ -15,9 +15,22 @@ if (!createRes.ok) {
   process.exit(1);
 }
 const sessionId = created.session.id;
-const riskyClause = created.clauses.find((c) => c.risk_level === "위험");
-console.log("   session id:", sessionId);
-console.log("   조항 수:", created.clauses.length, "/ 위험조항 예시:", riskyClause?.clause_text?.slice(0, 40));
+console.log("   session id:", sessionId, "status:", created.session.status);
+
+console.log("1-1) 비동기 분석 완료될 때까지 폴링...");
+let state;
+for (let i = 0; i < 30; i++) {
+  await new Promise((r) => setTimeout(r, 2000));
+  state = await (await fetch(`${base}/api/session/${sessionId}`)).json();
+  console.log(`   [${i}] status: ${state.session.status}, clauses: ${state.clauses.length}`);
+  if (state.clauses.length > 0) break;
+}
+const riskyClause = state.clauses.find((c) => c.risk_level === "위험");
+if (!riskyClause) {
+  console.error("위험조항을 못 찾음, 분석이 끝나지 않았을 수 있음");
+  process.exit(1);
+}
+console.log("   위험조항 예시:", riskyClause.clause_text.slice(0, 40));
 
 console.log("2) 세입자가 위험조항에 대해 채팅...");
 await fetch(`${base}/api/session/${sessionId}/message`, {
@@ -34,8 +47,7 @@ await fetch(`${base}/api/session/${sessionId}/message`, {
 });
 
 console.log("4) GET session 으로 상태 확인...");
-const getRes = await fetch(`${base}/api/session/${sessionId}`);
-const state = await getRes.json();
+state = await (await fetch(`${base}/api/session/${sessionId}`)).json();
 console.log("   session status:", state.session.status);
 console.log("   messages count:", state.messages.length);
 
