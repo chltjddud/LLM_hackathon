@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { analyzeContractImage } from "@/lib/analyzeContract";
 import { supabase } from "@/lib/supabase";
 import { getUserFromRequest } from "@/lib/auth";
+import { uploadToS3 } from "@/lib/s3";
 
 // 세입자가 사진을 올려서 새 협상 세션을 만듭니다. 로그인 상태면 세션이 계정에 연결됩니다.
 export async function POST(req: NextRequest) {
@@ -29,6 +30,12 @@ export async function POST(req: NextRequest) {
   if (sessionError) {
     return NextResponse.json({ error: sessionError.message }, { status: 500 });
   }
+
+  // 원본 계약서 사진을 S3에 보관 (best-effort — 로컬처럼 AWS 자격증명이 없는 환경에서는 조용히 건너뜀)
+  const ext = (mediaType || "image/jpeg").split("/")[1] || "jpg";
+  uploadToS3(`contract-photos/${session.id}.${ext}`, Buffer.from(imageBase64, "base64"), mediaType)
+    .then((url) => supabase.from("sessions").update({ image_s3_url: url }).eq("id", session.id))
+    .catch((err) => console.error("[S3] 계약서 사진 업로드 실패(무시하고 계속 진행):", err.message));
 
   const rows = clauses.map((c) => ({
     session_id: session.id,
