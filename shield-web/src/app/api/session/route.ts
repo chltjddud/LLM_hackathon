@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabase";
 
 // 세입자가 사진을 올려서 새 협상 세션을 만듭니다.
 export async function POST(req: NextRequest) {
-  const { imageBase64, mediaType } = await req.json();
+  const { imageBase64, mediaType, filename, fileSize } = await req.json();
 
   if (!imageBase64) {
     return NextResponse.json({ error: "imageBase64가 필요합니다." }, { status: 400 });
@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   // 1. 세션을 먼저 'analyzing' 상태로 생성하여 즉시 응답합니다.
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
-    .insert({ status: "analyzing" })
+    .insert({ status: "analyzing", filename, file_size: fileSize })
     .select()
     .single();
 

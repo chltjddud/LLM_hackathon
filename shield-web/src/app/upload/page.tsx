@@ -1,27 +1,12 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
 export default function UploadPage() {
   const router = useRouter();
   const [isUploading, setIsUploading] = useState(false);
-  const [loadingText, setLoadingText] = useState('문서 읽는 중...');
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    setIsDark(document.documentElement.classList.contains('dark'));
-  }, []);
-
-  const toggleTheme = () => {
-    if (document.documentElement.classList.contains('dark')) {
-      document.documentElement.classList.remove('dark');
-      setIsDark(false);
-    } else {
-      document.documentElement.classList.add('dark');
-      setIsDark(true);
-    }
-  };
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
   const convertToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -36,112 +21,197 @@ export default function UploadPage() {
     });
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setIsUploading(true);
-      const file = e.target.files[0];
-      
-      try {
-        setLoadingText('파일 읽는 중 (Base64 변환)...');
-        const base64 = await convertToBase64(file);
-        const mediaType = file.type || 'application/pdf';
-        
-        setLoadingText('협상 방 생성 중...');
-        const response = await fetch('/api/session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            imageBase64: base64,
-            mediaType: mediaType,
-          }),
-        });
-        
-        if (!response.ok) {
-          const errJson = await response.json().catch(() => null);
-          const errMsg = errJson?.error || '계약서 분석 및 세션 생성 중 오류가 발생했습니다.';
-          throw new Error(errMsg);
-        }
-        
-        const data = await response.json();
-        
-        // Save clauses directly to sessionStorage
-        sessionStorage.setItem('analysisResult', JSON.stringify(data));
-        
-        // Redirect to the real-time negotiation and signature page
-        router.push(`/session/${data.session.id}?role=tenant`);
-      } catch (error: any) {
-        alert(error.message || '분석 중 오류가 발생했습니다. 다시 시도해 주세요.');
-        setIsUploading(false);
-      }
+      setSelectedFile(e.target.files[0]);
     }
   };
 
-  return (
-    <main className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-50 pt-24 px-6 relative transition-colors duration-200">
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+  };
+
+  const handleStartAnalysis = async () => {
+    if (!selectedFile) return;
+    
+    setIsUploading(true);
+    try {
+      const base64 = await convertToBase64(selectedFile);
+      const mediaType = selectedFile.type || 'application/pdf';
       
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 w-full z-40 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-xl font-bold">
-              계약방패
-            </Link>
-            <Link href="/features" className="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors">기능 소개</Link>
+      const response = await fetch('/api/session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          imageBase64: base64,
+          mediaType: mediaType,
+          filename: selectedFile.name,
+          fileSize: selectedFile.size,
+        }),
+      });
+      
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => null);
+        const errMsg = errJson?.error || '계약서 분석 및 세션 생성 중 오류가 발생했습니다.';
+        throw new Error(errMsg);
+      }
+      
+      const data = await response.json();
+      
+      sessionStorage.setItem('analysisResult', JSON.stringify(data));
+      
+      router.push(`/session/${data.session.id}?role=tenant`);
+    } catch (error: any) {
+      alert(error.message || '분석 중 오류가 발생했습니다. 다시 시도해 주세요.');
+      setIsUploading(false);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + sizes[i];
+  };
+
+  const getFileExtension = (name: string) => {
+    return name.split('.').pop()?.toUpperCase() || 'FILE';
+  };
+
+  return (
+    <div className="min-h-screen bg-[#F9FAFC] flex justify-center">
+      <main className="w-full max-w-md bg-[#F9FAFC] text-gray-900 flex flex-col relative pb-10 shadow-sm min-h-screen">
+        {/* Navigation */}
+        <header className="flex items-center justify-between px-6 pt-10 pb-4">
+          <Link href="/" className="text-[26px] font-extrabold tracking-tight" style={{ color: '#6542F1' }}>SIGNAL</Link>
+          <button className="p-2 -mr-2 text-gray-700 hover:text-gray-900 transition-colors">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+          </button>
+        </header>
+
+        <div className="px-6 border-b border-gray-200/60 mx-6 mb-8"></div>
+
+        <div className="px-6">
+          <div className="mb-8">
+            <h1 className="text-[24px] font-bold mb-3 tracking-tight text-gray-900">계약서 업로드</h1>
+            <p className="text-[16px] text-gray-500 font-medium leading-relaxed">
+              임대차 계약서를 업로드하면<br />
+              법령·판례 기준으로 위험 조항을 분석해드려요.
+            </p>
           </div>
-          <div className="flex items-center gap-4 text-sm font-medium">
-            <button onClick={toggleTheme} className="p-2 px-4 bg-gray-200 dark:bg-gray-800 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">
-              {isDark ? '라이트 모드' : '다크 모드'}
+
+          {/* Conditional Upload Area */}
+          {!selectedFile ? (
+            <label htmlFor="contract-file" className="block w-full border-[2px] border-dashed border-[#CBBBF3] hover:border-[#6542F1] transition-colors bg-[#F6F5FD] rounded-[24px] p-8 flex flex-col items-center text-center cursor-pointer mb-5">
+              <div className="w-14 h-14 bg-white shadow-sm rounded-[16px] flex items-center justify-center mb-5">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="17 8 12 3 7 8"></polyline>
+                  <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+              </div>
+              <h3 className="text-[20px] font-bold mb-2 text-gray-900 tracking-tight">계약서를 업로드하세요</h3>
+              <p className="text-[15px] text-gray-500 font-medium mb-4">파일을 선택하여 계약서를 등록해주세요.</p>
+              <p className="text-[13px] text-gray-400 font-medium mb-6 tracking-wide">PDF, JPG, PNG · 최대 10MB</p>
+              
+              <div className="bg-[#6542F1] text-white font-bold text-[16px] py-4 px-8 rounded-full shadow-[0_4px_12px_rgba(101,66,241,0.25)] hover:bg-[#573AC2] transition-colors w-full flex items-center justify-center">
+                파일 선택하기
+              </div>
+              
+              <input id="contract-file" type="file" className="hidden" accept=".pdf,image/jpeg,image/png" onChange={handleFileSelect} />
+            </label>
+          ) : (
+            <div className="bg-white border-[1.5px] border-[#F4F1FF] rounded-[24px] px-6 py-7 mb-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)]">
+              <div className={`flex items-center justify-between ${isUploading ? 'mb-6' : 'mb-8'}`}>
+                <div className="flex items-center gap-4 overflow-hidden">
+                  <div className="w-[52px] h-[52px] bg-[#F4F1FF] rounded-[16px] flex items-center justify-center shrink-0">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                      <polyline points="14 2 14 8 20 8"></polyline>
+                    </svg>
+                  </div>
+                  <div className="overflow-hidden pr-2">
+                    <h3 className="text-[17px] font-bold text-gray-900 truncate">{selectedFile.name}</h3>
+                    <p className="text-[13px] text-gray-500 font-medium mt-1">
+                      {getFileExtension(selectedFile.name)} · {formatFileSize(selectedFile.size)}
+                    </p>
+                  </div>
+                </div>
+                {!isUploading && (
+                  <button onClick={clearSelectedFile} className="p-2 text-gray-400 hover:text-gray-600 transition-colors shrink-0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                )}
+              </div>
+              
+              {isUploading ? (
+                <>
+                  <div className="border-t border-gray-100 mb-8 -mx-1"></div>
+                  <div className="flex flex-col items-center justify-center pb-2">
+                    <div className="w-[42px] h-[42px] border-[3px] border-[#F4F1FF] border-t-[#D4C8F6] rounded-full animate-spin mb-6"></div>
+                    <h3 className="text-[19px] font-bold text-gray-900 mb-2 tracking-tight">계약서 분석 중</h3>
+                    <p className="text-[14px] text-gray-500 font-medium text-center leading-relaxed mb-6">
+                      법령·판례를 기준으로<br />
+                      위험 조항을 확인하고 있어요.
+                    </p>
+                    <span className="inline-block px-4 py-1.5 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-full">
+                      예상 소요 15~40초
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <button onClick={handleStartAnalysis} className="bg-[#6542F1] text-white font-bold text-[16px] py-4 px-8 rounded-2xl shadow-[0_4px_12px_rgba(101,66,241,0.25)] hover:bg-[#573AC2] transition-colors w-full flex items-center justify-center mb-5">
+                    AI 분석 시작
+                  </button>
+                  
+                  <div className="text-center">
+                    <label htmlFor="change-file" className="text-[14px] text-gray-500 font-bold cursor-pointer hover:text-gray-700 transition-colors">
+                      다른 파일 선택하기
+                    </label>
+                    <input id="change-file" type="file" className="hidden" accept=".pdf,image/jpeg,image/png" onChange={handleFileSelect} />
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Secondary Button */}
+          {!isUploading && (
+            <button className="w-full flex items-center justify-center gap-2.5 border-[1.5px] border-[#D4C8F6] text-[#6542F1] bg-white rounded-full py-4 mb-6 hover:bg-gray-50 transition-colors font-bold text-[16px] shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+              </svg>
+              계약서 촬영하기
             </button>
-          </div>
+          )}
+
+          {/* Info Box */}
+          {!isUploading && (
+            <div className="bg-[#F0F6FF] rounded-[16px] p-5 flex gap-3 items-start border border-[#E0EFFF]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+              </svg>
+              <p className="text-[14px] text-[#3B82F6] font-medium leading-relaxed">
+                계약서 전체가 잘 보이도록<br />
+                흔들림 없이 선명하게 촬영해주세요.
+              </p>
+            </div>
+          )}
         </div>
-      </nav>
-
-      {isUploading && (
-        <div className="fixed inset-0 z-50 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm flex flex-col items-center justify-center">
-           <div className="w-16 h-16 border-4 border-blue-200 dark:border-blue-900 border-t-blue-600 rounded-full animate-spin mb-8"></div>
-           <h2 className="text-3xl font-bold mb-2">계약서 분석 중</h2>
-           <p className="text-blue-600 dark:text-blue-400 text-lg animate-pulse">{loadingText}</p>
-        </div>
-      )}
-
-      <div className="max-w-3xl mx-auto pt-10">
-        <div className="mb-10 text-center">
-          <h1 className="text-3xl md:text-4xl font-bold mb-4">계약서 업로드</h1>
-          <p className="text-gray-600 dark:text-gray-400">
-            분석할 계약서 PDF 파일(.pdf)을 올려주세요.
-          </p>
-          <div className="mt-4 inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-4 py-2 rounded-lg text-sm border border-blue-200 dark:border-blue-800">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            업로드하신 파일은 분석 즉시 폐기되며 안전하게 보호됩니다.
-          </div>
-        </div>
-
-        {/* Upload Area */}
-        <label htmlFor="contract-file" className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 transition-colors bg-white dark:bg-gray-800 rounded-3xl p-12 flex flex-col text-center cursor-pointer group">
-          <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-            <svg className="w-10 h-10 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-            </svg>
-          </div>
-          <h3 className="text-2xl font-semibold mb-2">클릭하여 파일 선택</h3>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">또는 이 곳으로 파일을 드래그 앤 드롭 하세요.</p>
-          <p className="text-xs text-gray-500">지원 형식: PDF (최대 10MB)</p>
-          
-          <input id="contract-file" type="file" className="hidden" accept=".pdf" onChange={handleFileUpload} />
-        </label>
-
-        <div className="mt-12 flex justify-between items-center border-t border-gray-200 dark:border-gray-800 pt-6">
-          <Link href="/" className="text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors">
-            이전으로
-          </Link>
-        </div>
-
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
-

@@ -16,7 +16,10 @@ export default function SessionPage() {
   const [signatures, setSignatures] = useState<any[]>([]);
   const [chatText, setChatText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isDark, setIsDark] = useState(false);
+  
+  // Mobile Tab State
+  const [activeTab, setActiveTab] = useState<'contracts' | 'chat' | 'sign'>('contracts');
+  const [selectedClause, setSelectedClause] = useState<any>(null);
 
   // AI Coach state
   const [activeCoachClause, setActiveCoachClause] = useState<string | null>(null);
@@ -30,10 +33,7 @@ export default function SessionPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Poll database every 2 seconds
   useEffect(() => {
-    setIsDark(document.documentElement.classList.contains('dark'));
-    
     const fetchData = async () => {
       try {
         const res = await fetch(`/api/session/${id}`);
@@ -55,36 +55,71 @@ export default function SessionPage() {
     return () => clearInterval(interval);
   }, [id]);
 
-  // Scroll to chat end when new messages arrive
+  const messagesLength = messages.length;
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const toggleTheme = () => {
-    if (document.documentElement.classList.contains('dark')) {
-      document.documentElement.classList.remove('dark');
-      setIsDark(false);
-    } else {
-      document.documentElement.classList.add('dark');
-      setIsDark(true);
+    if (activeTab === 'chat') {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  };
+  }, [messagesLength, activeTab]);
 
-  // Clause Agreement / Resolution
   const handleResolveClause = async (clauseId: string, currentResolved: boolean) => {
+    const updatedStatus = !currentResolved;
+    // Optimistic update
+    setClauses(prev => prev.map(c => 
+      c.id === clauseId 
+        ? { ...c, [role === 'tenant' ? 'resolved_by_tenant' : 'resolved_by_landlord']: updatedStatus } 
+        : c
+    ));
+    if (selectedClause?.id === clauseId) {
+      setSelectedClause((prev: any) => ({
+        ...prev,
+        [role === 'tenant' ? 'resolved_by_tenant' : 'resolved_by_landlord']: updatedStatus
+      }));
+    }
+
     try {
       const res = await fetch(`/api/session/${id}/clause/${clauseId}/resolve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role, resolved: !currentResolved })
+        body: JSON.stringify({ role, resolved: updatedStatus })
       });
       if (!res.ok) throw new Error('조항 동의 상태 변경 실패');
     } catch (err) {
+      // Revert on failure
+      setClauses(prev => prev.map(c => 
+        c.id === clauseId 
+          ? { ...c, [role === 'tenant' ? 'resolved_by_tenant' : 'resolved_by_landlord']: currentResolved } 
+          : c
+      ));
+      if (selectedClause?.id === clauseId) {
+        setSelectedClause((prev: any) => ({
+          ...prev,
+          [role === 'tenant' ? 'resolved_by_tenant' : 'resolved_by_landlord']: currentResolved
+        }));
+      }
       alert('오류가 발생했습니다. 다시 시도해 주세요.');
     }
   };
 
-  // Send Chat Message
+  // Read receipt mock logic for demo
+  useEffect(() => {
+    // In a real app, this would call an API to mark unread messages as read
+    // when the user views the chat tab.
+  }, [messagesLength, activeTab]);
+
+  const formatFileSize = (bytes?: number) => {
+    if (!bytes) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + sizes[i];
+  };
+
+  const getFileExtension = (name?: string) => {
+    if (!name) return 'PDF';
+    return name.split('.').pop()?.toUpperCase() || 'FILE';
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatText.trim()) return;
@@ -102,9 +137,9 @@ export default function SessionPage() {
     }
   };
 
-  // Query AI Negotiation Coach
   const handleFetchCoach = async (clauseTitle: string, clauseDesc: string) => {
     setActiveCoachClause(clauseTitle);
+    setActiveTab('chat');
     setCoachLoading(true);
     setCoachData(null);
     try {
@@ -116,8 +151,16 @@ export default function SessionPage() {
       if (!res.ok) throw new Error('코칭 생성 실패');
       const data = await res.json();
       setCoachData(data);
+      
+      // Auto apply mock message for demo if the AI response is empty
+      if(data.message) {
+         setChatText(data.message);
+      }
     } catch (err) {
       console.error(err);
+      // Mock for Hackathon demo
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      setChatText("수리 책임 조항과 관련해서 노후 시설 교체까지 임차인 부담으로 보는 것은 과도해 보입니다. 아래와 같이 수정 제안드립니다. 검토 부탁드립니다.\n\n· 수리 범위를 명확히 규정하고 자연적 마모/노후는 임대인 부담으로 수정 부탁드립니다.");
     } finally {
       setCoachLoading(false);
     }
@@ -126,19 +169,17 @@ export default function SessionPage() {
   const handleApplyCoachMessage = (message: string) => {
     setChatText(message);
     setActiveCoachClause(null);
+    setActiveTab('chat');
   };
 
-  // E-Signature Drawing Logic
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    ctx.strokeStyle = isDark ? '#ffffff' : '#000000';
+    ctx.strokeStyle = '#000000';
     ctx.lineWidth = 3;
     ctx.lineCap = 'round';
-
     const rect = canvas.getBoundingClientRect();
     let clientX, clientY;
     if ('touches' in e) {
@@ -148,7 +189,6 @@ export default function SessionPage() {
       clientX = e.clientX;
       clientY = e.clientY;
     }
-
     ctx.beginPath();
     ctx.moveTo(clientX - rect.left, clientY - rect.top);
     setIsDrawing(true);
@@ -160,7 +200,6 @@ export default function SessionPage() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
     const rect = canvas.getBoundingClientRect();
     let clientX, clientY;
     if ('touches' in e) {
@@ -172,15 +211,11 @@ export default function SessionPage() {
       clientX = e.clientX;
       clientY = e.clientY;
     }
-
     ctx.lineTo(clientX - rect.left, clientY - rect.top);
     ctx.stroke();
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-  };
-
+  const stopDrawing = () => setIsDrawing(false);
   const clearCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -189,23 +224,16 @@ export default function SessionPage() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  // Submit Signature
   const handleSubmitSignature = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
-    // Check if canvas is empty
-    const buffer = new Uint32Array(
-      canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data.buffer
-    );
+    const buffer = new Uint32Array(canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data.buffer);
     if (!buffer.some(color => color !== 0)) {
       alert('서명 패드에 서명을 먼저 그려주세요.');
       return;
     }
-
     setSubmittingSignature(true);
     const signatureImage = canvas.toDataURL('image/png');
-
     try {
       const res = await fetch(`/api/session/${id}/sign`, {
         method: 'POST',
@@ -222,404 +250,517 @@ export default function SessionPage() {
   };
 
   const copyShareLink = () => {
-    const origin = window.location.origin;
-    const otherRole = role === 'tenant' ? 'landlord' : 'tenant';
-    const link = `${origin}/session/${id}?role=${otherRole}`;
-    
-    if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(link).then(() => {
-        alert('상대방에게 공유할 협상 링크가 복사되었습니다!');
-      }).catch(err => {
-        console.error('Failed to copy link: ', err);
-      });
-    } else {
-      const textArea = document.createElement("textarea");
-      textArea.value = link;
-      textArea.style.position = "absolute";
-      textArea.style.left = "-999999px";
-      document.body.prepend(textArea);
-      textArea.select();
-      try {
-        document.execCommand('copy');
-        alert('상대방에게 공유할 협상 링크가 복사되었습니다!');
-      } catch (error) {
-        console.error(error);
-        alert('링크 복사에 실패했습니다. 수동으로 복사해주세요: ' + link);
-      } finally {
-        textArea.remove();
-      }
-    }
+    const link = `${window.location.origin}/session/${id}?role=${role === 'tenant' ? 'landlord' : 'tenant'}`;
+    navigator.clipboard.writeText(link).then(() => alert('상대방에게 공유할 협상 링크가 복사되었습니다!'));
   };
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="w-16 h-16 border-4 border-blue-200 dark:border-blue-900 border-t-blue-600 rounded-full animate-spin mb-4"></div>
-        <p className="text-gray-600 dark:text-gray-400">실시간 협상 세션을 로드 중입니다...</p>
+      <div className="min-h-screen bg-[#F9FAFC] flex flex-col items-center justify-center max-w-md mx-auto">
+        <div className="w-12 h-12 border-4 border-gray-200 border-t-[#6542F1] rounded-full animate-spin mb-4"></div>
       </div>
     );
   }
 
   const hasSigned = signatures.some(s => s.role === role);
-  const otherPartySigned = signatures.some(s => s.role !== role);
-  const mySignature = signatures.find(s => s.role === role);
-  const otherSignature = signatures.find(s => s.role !== role);
+  const unresolvedCriticalCount = clauses.filter(c => (c.risk_level === '위험' || c.risk_level === '주의') && (!c.resolved_by_tenant || !c.resolved_by_landlord)).length;
 
-  // Check if all warnings and risks are resolved
-  const unresolvedCriticalCount = clauses.filter(
-    c => (c.risk_level === '위험' || c.risk_level === '주의') && (!c.resolved_by_tenant || !c.resolved_by_landlord)
-  ).length;
+  const riskClauses = clauses.filter(c => c.risk_level === '위험');
+  const warningClauses = clauses.filter(c => c.risk_level === '주의');
+  const missingClauses = clauses.filter(c => c.category?.includes('누락') || c.clause_text?.includes('없음'));
+  const score = Math.max(0, 100 - (riskClauses.length * 10) - (warningClauses.length * 4) - (missingClauses.length * 5));
+
+  // If a clause is selected for viewing details
+  if (selectedClause) {
+    return (
+      <div className="min-h-screen bg-white flex justify-center pb-20">
+        <main className="w-full max-w-md bg-white text-gray-900 flex flex-col relative shadow-sm min-h-screen">
+          <div className="flex items-center gap-2 px-5 pt-10 pb-4 border-b border-gray-100">
+            <button onClick={() => setSelectedClause(null)} className="p-2 -ml-2">
+               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+            </button>
+            <h2 className="text-[20px] font-bold text-gray-900 mx-auto pr-8">조회 상세 보기</h2>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5 pb-28">
+            {/* Card 1: Risk Detail */}
+            <div className={`relative overflow-hidden rounded-[24px] p-6 ${selectedClause.risk_level === '위험' ? 'bg-[#FFF5F5] border border-[#FEE2E2]' : 'bg-[#FFF7ED] border border-[#FFEDD5]'}`}>
+              <p className={`text-[13px] font-bold mb-2 flex items-center gap-1.5 ${selectedClause.risk_level === '위험' ? 'text-[#EF4444]' : 'text-[#F97316]'}`}>
+                {selectedClause.risk_level === '위험' ? '🔥 위험 조항' : '⚠️ 주의 조항'}
+              </p>
+              <h3 className="text-[22px] font-extrabold text-gray-900 mb-2 pr-6 leading-tight">{selectedClause.category || '조항 상세'}</h3>
+              <p className="text-[14px] text-gray-500 mb-4">{selectedClause.clause_text ? selectedClause.clause_text.substring(0, 50) + (selectedClause.clause_text.length > 50 ? '...' : '') : '내용 없음'}</p>
+              <p className="text-[15px] text-gray-700 font-medium leading-relaxed">{selectedClause.explanation}</p>
+            </div>
+
+            {/* Card 2: Law */}
+            <div className="bg-[#F4F6FC] rounded-[24px] p-6 border border-[#E0E7FF]">
+              <p className="text-[#3B82F6] text-[14px] font-bold mb-2 flex items-center gap-1.5">⚖️ 관련 법령 근거</p>
+              <h4 className="text-[16px] font-extrabold text-[#4F46E5] leading-relaxed">
+                {selectedClause.law_basis || '관련 법령 정보가 없습니다.'}
+              </h4>
+            </div>
+
+            {/* Card 3: Guide */}
+            <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-[24px] p-6 mb-4">
+              <p className="text-[#059669] text-[15px] font-bold mb-4 flex items-center gap-1.5">💡 AI 협상 가이드</p>
+              <ul className="space-y-3">
+                {selectedClause.keyword_hint && selectedClause.keyword_hint.length > 0 ? (
+                  selectedClause.keyword_hint.map((item: string, i: number) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      <span className="text-[15px] text-gray-700 font-medium leading-relaxed">
+                        <strong className="text-[#059669]">[{item}]</strong> 키워드를 중심으로 협상을 진행해보세요.
+                      </span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="flex items-start gap-2">
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                     <span className="text-[15px] text-gray-700 font-medium leading-relaxed">
+                       해당 조항의 위험성을 언급하며 수정을 요청하세요.
+                     </span>
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            <div className="flex gap-2 mt-2">
+              <button 
+                onClick={() => handleResolveClause(selectedClause.id, role === 'tenant' ? selectedClause.resolved_by_tenant : selectedClause.resolved_by_landlord)} 
+                className={`flex-1 py-4 text-[16px] font-bold rounded-[20px] shadow-lg transition-colors ${
+                  (role === 'tenant' ? selectedClause.resolved_by_tenant : selectedClause.resolved_by_landlord) 
+                    ? 'bg-gray-200 text-gray-700' 
+                    : 'bg-gray-900 text-white'
+                }`}
+              >
+                {(role === 'tenant' ? selectedClause.resolved_by_tenant : selectedClause.resolved_by_landlord) ? '동의 취소' : '동의하기'}
+              </button>
+              <button onClick={() => {
+                handleFetchCoach(selectedClause.category, selectedClause.explanation);
+                setSelectedClause(null);
+              }} className="flex-1 py-4 bg-[#4F46E5] hover:bg-[#4338CA] text-white text-[16px] font-bold rounded-[20px] flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-200">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                협상하기
+              </button>
+            </div>
+          </div>
+
+          <nav className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-3 flex justify-between items-center text-[10px] font-bold text-gray-400 pb-safe">
+            <button className="flex flex-col items-center gap-1.5 p-2">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+              Home
+            </button>
+            <button onClick={() => { setSelectedClause(null); setActiveTab('contracts'); }} className="flex flex-col items-center gap-1.5 p-2 transition-colors text-[#6542F1]">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+              Contracts
+            </button>
+            <button onClick={() => { setSelectedClause(null); setActiveTab('chat'); }} className="flex flex-col items-center gap-1.5 p-2 transition-colors">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+              Chat
+            </button>
+            <button className="flex flex-col items-center gap-1.5 p-2">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+              Settings
+            </button>
+          </nav>
+        </main>
+      </div>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-50 pt-20 transition-colors duration-200 flex flex-col">
-      
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 w-full z-40 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-xl font-bold">
-              계약방패
-            </Link>
-            <span className="text-xs px-2.5 py-1 bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 font-bold rounded-full">
-              {role === 'tenant' ? '임차인(세입자)' : '임대인(집주인)'} 모드
+    <div className="min-h-screen bg-white flex justify-center pb-20">
+      <main className="w-full max-w-md bg-white text-gray-900 flex flex-col relative shadow-sm min-h-screen">
+        
+        {session?.status === 'analyzing' ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 bg-white z-50">
+            <div className="w-[42px] h-[42px] border-[3px] border-[#F4F1FF] border-t-[#D4C8F6] rounded-full animate-spin mb-6"></div>
+            <h3 className="text-[19px] font-bold text-gray-900 mb-2 tracking-tight">계약서 분석 중</h3>
+            <p className="text-[14px] text-gray-500 font-medium text-center leading-relaxed mb-6">
+              법령·판례를 기준으로<br />
+              위험 조항을 확인하고 있어요.
+            </p>
+            <span className="inline-block px-4 py-1.5 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-full">
+              예상 소요 15~40초
             </span>
           </div>
-          <div className="flex items-center gap-3">
-            <button onClick={copyShareLink} className="text-sm px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-full transition-colors flex items-center gap-1.5 font-medium shadow-sm">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 10.742l4.739-2.37a2 2 0 11.954 1.906l-4.74 2.37a2 2 0 11-.954-1.906z" />
-              </svg>
-              상대방 초대 링크 복사
-            </button>
-            <button onClick={toggleTheme} className="p-2 bg-gray-200 dark:bg-gray-800 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors text-sm px-4">
-              {isDark ? '라이트 모드' : '다크 모드'}
-            </button>
+        ) : session?.status === 'error' ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 bg-white z-50 text-center">
+            <div className="text-[40px] mb-4">🚨</div>
+            <h2 className="text-[18px] font-bold mb-2 text-red-600">계약서 분석 중 오류가 발생했습니다.</h2>
+            <p className="text-[14px] text-gray-500 mb-6">AI가 문서를 읽을 수 없거나 서버에 문제가 생겼습니다.</p>
+            <Link href="/" className="bg-[#6542F1] text-white font-bold py-3 px-6 rounded-xl">홈으로 돌아가기</Link>
           </div>
-        </div>
-      </nav>
+        ) : (
+          <>
+            {activeTab === 'contracts' && (
+              <div className="flex-1 flex flex-col bg-white overflow-hidden pb-20">
+                {/* Top Header */}
+                <header className="flex items-center justify-between px-5 pt-10 pb-4">
+                  <Link href="/" className="text-[24px] font-extrabold tracking-tight" style={{ color: '#6542F1' }}>SIGNAL</Link>
+                  <div className="flex items-center gap-4">
+                    <button className="text-gray-700 hover:text-gray-900 transition-colors">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+                    </button>
+                  </div>
+                </header>
+                <div className="px-5 border-b border-gray-100 mb-4"></div>
 
-      {/* Main Flow Section */}
-      {session?.status === 'analyzing' ? (
-        <div className="max-w-3xl mx-auto py-24 px-6 flex-1 w-full flex flex-col items-center justify-center text-center">
-          <div className="w-24 h-24 border-4 border-blue-200 dark:border-blue-900 border-t-blue-600 rounded-full animate-spin mb-8"></div>
-          <h2 className="text-3xl font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">AI가 계약서를 꼼꼼히 분석하고 있습니다...</h2>
-          <p className="text-gray-500 dark:text-gray-400 text-lg">조항의 유불리와 독소조항을 찾는 중입니다.<br/>잠시만 기다려주시면 완료되는 즉시 화면이 전환됩니다.</p>
-        </div>
-      ) : session?.status === 'error' ? (
-        <div className="max-w-3xl mx-auto py-24 px-6 flex-1 w-full flex flex-col items-center justify-center text-center">
-          <div className="text-6xl mb-6">🚨</div>
-          <h2 className="text-2xl font-bold mb-4 text-red-600">계약서 분석 중 오류가 발생했습니다.</h2>
-          <p className="text-gray-500 dark:text-gray-400">AI가 문서를 읽을 수 없거나 서버에 문제가 생겼습니다.<br/>홈으로 돌아가서 다시 시도해주세요.</p>
-          <Link href="/" className="mt-8 bg-blue-600 hover:bg-blue-700 text-white font-medium px-8 py-3 rounded-full shadow-sm transition-colors">홈으로 돌아가기</Link>
-        </div>
-      ) : session?.status === 'completed' ? (
-        // Completion View
-        <div className="max-w-3xl mx-auto py-12 px-6 flex-1 w-full flex flex-col items-center justify-center">
-          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-3xl p-10 w-full shadow-lg text-center space-y-8 relative overflow-hidden transition-colors">
-            
-            {/* Stamp decoration */}
-            <div className="absolute -top-12 -right-12 w-40 h-40 border-4 border-emerald-500/20 rounded-full flex items-center justify-center rotate-12">
-              <div className="border border-emerald-500/20 w-36 h-36 rounded-full flex items-center justify-center text-emerald-500/20 font-bold text-xl">합의 완료</div>
-            </div>
+                <div className="flex-1 overflow-y-auto">
+                  {/* Sub Header */}
+                  <div className="flex items-center justify-between px-5 mb-6">
+                    <button onClick={() => window.history.back()} className="p-1">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    </button>
+                    <h2 className="text-[20px] font-bold text-gray-900 tracking-tight">AI 분석 결과</h2>
+                    <button onClick={copyShareLink} className="p-1 text-gray-800">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>
+                    </button>
+                  </div>
 
-            <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-950/30 rounded-full flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400">
-              <svg className="w-12 h-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-              </svg>
-            </div>
+                  <div className="px-5">
+                    {/* Score Card */}
+                    <div className="bg-[#F8F7FF] border border-[#E3DCFA] rounded-[24px] p-6 mb-5 relative overflow-hidden">
+                      <p className="text-[#3B82F6] text-[13px] font-bold mb-3">계약서를 꼼꼼하게 분석했어요!</p>
+                      <h3 className="text-[15px] font-bold text-gray-900 mb-1">종합 위험 점수</h3>
+                      <div className="flex items-baseline gap-2 mb-4">
+                        <span className="text-[42px] font-black text-[#4F46E5] leading-none tracking-tighter">{score}</span>
+                        <span className="text-[24px] font-bold text-gray-400">/100</span>
+                        <span className="ml-2 px-3 py-1 bg-[#D1FAE5] text-[#059669] text-[13px] font-bold rounded-full">보통</span>
+                      </div>
+                      <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden flex">
+                        <div className="h-full bg-[#10B981]" style={{ width: '60%' }}></div>
+                        <div className="h-full bg-[#F59E0B]" style={{ width: '25%' }}></div>
+                        <div className="h-full bg-gray-200" style={{ width: '15%' }}></div>
+                      </div>
+                      <div className="absolute top-6 right-2 w-24 h-24 flex items-center justify-center opacity-90">
+                        <div className="text-[64px]">🐶</div>
+                        <div className="absolute bottom-2 left-0 text-[32px]">🔍</div>
+                      </div>
+                    </div>
 
-            <div>
-              <h1 className="text-3xl font-bold mb-2">실시간 계약 협상 합의 완료</h1>
-              <p className="text-gray-500 dark:text-gray-400">양측이 모든 분쟁 조항에 합의하고 최종 전자서명을 마쳤습니다.</p>
-            </div>
+                    {/* Summary Boxes */}
+                    <div className="flex gap-3 mb-8">
+                      <div className="flex-1 bg-white border border-[#FEE2E2] rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+                        <p className="text-[13px] font-bold text-[#EF4444] mb-1">위험 조항</p>
+                        <p className="text-[24px] font-black text-[#EF4444]"><span className="text-[28px]">{riskClauses.length}</span><span className="text-[16px]">개</span></p>
+                      </div>
+                      <div className="flex-1 bg-white border border-[#FFEDD5] rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+                        <p className="text-[13px] font-bold text-[#F97316] mb-1">주의 조항</p>
+                        <p className="text-[24px] font-black text-[#F97316]"><span className="text-[28px]">{warningClauses.length}</span><span className="text-[16px]">개</span></p>
+                      </div>
+                      <div className="flex-1 bg-white border border-[#E0E7FF] rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+                        <p className="text-[13px] font-bold text-[#3B82F6] mb-1">누락 항목</p>
+                        <p className="text-[24px] font-black text-[#3B82F6]"><span className="text-[28px]">{missingClauses.length || 0}</span><span className="text-[16px]">개</span></p>
+                      </div>
+                    </div>
 
-            <div className="border-y border-gray-100 dark:border-gray-700 py-6 grid grid-cols-2 gap-8 text-left">
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold text-gray-400 uppercase">임차인 (세입자) 서명</h4>
-                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 h-32 flex items-center justify-center">
-                  {mySignature ? (
-                    <img src={mySignature.signature_image} alt="임차인 서명" className="max-h-full max-w-full dark:invert" />
-                  ) : (
-                    <span className="text-gray-400 text-sm">서명 완료</span>
-                  )}
-                </div>
-                <span className="text-xs text-gray-500 block">서명일시: {new Date(mySignature?.signed_at || "").toLocaleString()}</span>
-              </div>
-              <div className="space-y-4">
-                <h4 className="text-xs font-bold text-gray-400 uppercase">임대인 (집주인) 서명</h4>
-                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 h-32 flex items-center justify-center">
-                  {otherSignature ? (
-                    <img src={otherSignature.signature_image} alt="임대인 서명" className="max-h-full max-w-full dark:invert" />
-                  ) : (
-                    <span className="text-gray-400 text-sm">서명 완료</span>
-                  )}
-                </div>
-                <span className="text-xs text-gray-500 block">서명일시: {new Date(otherSignature?.signed_at || "").toLocaleString()}</span>
-              </div>
-            </div>
-
-            <div className="pt-4">
-              <Link href="/" className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-medium px-8 py-3 rounded-full shadow-sm transition-colors">
-                홈으로 돌아가기
-              </Link>
-            </div>
-          </div>
-        </div>
-      ) : (
-        // Negotiation and Signing View
-        <div className="max-w-7xl mx-auto px-6 py-6 flex-1 w-full grid grid-cols-1 lg:grid-cols-2 gap-8 overflow-hidden min-h-[calc(100vh-80px)]">
-          
-          {/* Left Side: Clauses List */}
-          <div className="flex flex-col space-y-6 overflow-y-auto max-h-[calc(100vh-100px)] pr-2">
-            <div>
-              <h2 className="text-2xl font-bold mb-2">계약서 합의 조항 리스트</h2>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">
-                임차인과 임대인이 합의해야 하는 조항들입니다. 각 조항에 대해 양측이 모두 동의해 주세요.
-              </p>
-            </div>
-
-            <div className="space-y-4">
-              {clauses.map((item) => {
-                const isRisk = item.risk_level === '위험';
-                const isWarning = item.risk_level === '주의';
-                const myAgreement = role === 'tenant' ? item.resolved_by_tenant : item.resolved_by_landlord;
-
-                let cardBgClass = 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700';
-                if (item.resolved_by_tenant && item.resolved_by_landlord) {
-                  cardBgClass = 'bg-emerald-50/20 dark:bg-emerald-950/5 border-emerald-200 dark:border-emerald-900/50 shadow-sm';
-                } else if (isRisk) {
-                  cardBgClass = 'bg-red-50/20 dark:bg-red-950/5 border-red-200 dark:border-red-900/50';
-                } else if (isWarning) {
-                  cardBgClass = 'bg-yellow-50/20 dark:bg-yellow-950/5 border-yellow-200 dark:border-yellow-900/50';
-                }
-
-                return (
-                  <div key={item.id} className={`border rounded-3xl p-6 transition-all duration-300 ${cardBgClass}`}>
-                    <div className="flex items-start gap-4">
-                      <div className="mt-1 flex-shrink-0">
-                        {item.resolved_by_tenant && item.resolved_by_landlord ? (
-                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400 font-bold">✓</span>
-                        ) : isRisk ? (
-                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400">🚨</span>
-                        ) : isWarning ? (
-                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-yellow-100 text-yellow-600 dark:bg-yellow-950/50 dark:text-yellow-400">⚠️</span>
-                        ) : (
-                          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-green-100 text-green-600 dark:bg-green-950/50 dark:text-green-400">✅</span>
+                    {/* Lists */}
+                    <div className="mb-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[18px] font-bold text-gray-900 tracking-tight">주요 위험 조항</h3>
+                        <span className="px-3 py-1 bg-[#F3F0FF] text-[#6542F1] text-[12px] font-bold rounded-full">{riskClauses.length + warningClauses.length}건</span>
+                      </div>
+                      <div className="space-y-3">
+                        {[...riskClauses, ...warningClauses].map((clause, idx) => (
+                          <div key={clause.id} className="bg-white border border-gray-200 rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] cursor-pointer hover:border-[#6542F1] hover:shadow-md transition-all" onClick={() => setSelectedClause(clause)}>
+                            <div className="flex items-start gap-3">
+                              <div className={`w-[26px] h-[26px] rounded-full flex items-center justify-center text-white text-[13px] font-bold shrink-0 mt-0.5 ${clause.risk_level === '위험' ? 'bg-[#EF4444]' : 'bg-[#F97316]'}`}>
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1 pr-2">
+                                <h4 className="text-[16px] font-bold text-gray-900 mb-1">{clause.category || '조항'}</h4>
+                                <p className="text-[13px] text-gray-400 mb-1.5">{clause.clause_text ? (clause.clause_text.length > 20 ? clause.clause_text.substring(0, 20) + '...' : clause.clause_text) : '내용 없음'}</p>
+                                <p className="text-[14px] text-gray-600 font-medium leading-relaxed">{clause.explanation}</p>
+                              </div>
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="mt-1 shrink-0">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                              </svg>
+                            </div>
+                          </div>
+                        ))}
+                        {(riskClauses.length === 0 && warningClauses.length === 0) && (
+                           <p className="text-gray-500 text-sm text-center py-4">위험 조항이 없습니다.</p>
                         )}
                       </div>
+                    </div>
 
-                      <div className="flex-1 space-y-4">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <h4 className="text-lg font-bold">{item.category || '기본 조항'}</h4>
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                            item.resolved_by_tenant && item.resolved_by_landlord
-                              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400'
-                              : isRisk
-                              ? 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-400'
-                              : 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-                          }`}>
-                            {item.resolved_by_tenant && item.resolved_by_landlord ? '합의 완료' : item.risk_level}
-                          </span>
-                        </div>
-
-                        <div className="bg-gray-100 dark:bg-gray-900 p-4 rounded-2xl">
-                          <p className="text-sm font-medium italic">"{item.clause_text}"</p>
-                        </div>
-
-                        {item.explanation && (
-                          <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-                            {item.explanation}
-                          </p>
+                    <div className="mb-8">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-[18px] font-bold text-gray-900 tracking-tight">누락되었을 수 있는 항목</h3>
+                        <span className="px-3 py-1 bg-[#F3F0FF] text-[#6542F1] text-[12px] font-bold rounded-full">{missingClauses.length}건</span>
+                      </div>
+                      <div className="space-y-3">
+                        {missingClauses.length > 0 ? missingClauses.map((clause, idx) => (
+                          <div key={clause.id} className="bg-white border border-gray-200 rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
+                            <div className="flex items-start gap-3">
+                              <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-white text-[13px] font-bold shrink-0 mt-0.5 bg-[#3B82F6]">
+                                {idx + riskClauses.length + warningClauses.length + 1}
+                              </div>
+                              <div className="flex-1 pr-2">
+                                <h4 className="text-[16px] font-bold text-gray-900 mb-1">{clause.category || '누락 항목'}</h4>
+                                <p className="text-[14px] text-gray-600 font-medium leading-relaxed">{clause.explanation}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )) : (
+                          <p className="text-gray-500 text-sm text-center py-4">누락된 항목이 없습니다.</p>
                         )}
+                      </div>
+                    </div>
 
-                        {/* Agreement States */}
-                        <div className="flex gap-4 border-t border-gray-100 dark:border-gray-700 pt-4 flex-wrap">
-                          <span className={`text-xs font-semibold flex items-center gap-1.5 ${item.resolved_by_tenant ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
-                            <span className={`w-2.5 h-2.5 rounded-full ${item.resolved_by_tenant ? 'bg-emerald-500' : 'bg-gray-300'}`}></span>
-                            세입자 합의: {item.resolved_by_tenant ? '동의함' : '대기중'}
-                          </span>
-                          <span className={`text-xs font-semibold flex items-center gap-1.5 ${item.resolved_by_landlord ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
-                            <span className={`w-2.5 h-2.5 rounded-full ${item.resolved_by_landlord ? 'bg-emerald-500' : 'bg-gray-300'}`}></span>
-                            임대인 합의: {item.resolved_by_landlord ? '동의함' : '대기중'}
-                          </span>
-                        </div>
+                    <div className="bg-[#F6F8FE] border border-[#E0E7FF] rounded-[24px] p-5 flex items-center gap-4 mb-8">
+                      <div className="text-[40px]">🐶</div>
+                      <div>
+                        <h4 className="text-[15px] font-bold text-[#4F46E5] mb-0.5">위험 조항을 확인했어요!</h4>
+                        <p className="text-[13px] text-gray-500 font-medium">상세 내용을 보고 안전하게 조정해보세요.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-                        {/* Action Agreement Button */}
-                        <div className="flex justify-between items-center gap-4">
-                          <button
-                            onClick={() => handleResolveClause(item.id, myAgreement)}
-                            className={`text-sm font-semibold px-5 py-2 rounded-xl transition-all duration-200 shadow-sm ${
-                              myAgreement
-                                ? 'bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-300'
-                                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                            }`}
-                          >
-                            {myAgreement ? '✓ 동의 취소' : '동의하기'}
+                  {/* Floating Banner when all resolved */}
+                  {unresolvedCriticalCount === 0 && !hasSigned && (
+                    <div className="absolute bottom-[76px] left-0 w-full px-5 z-20">
+                       <div className="bg-[#6542F1] text-white rounded-[20px] p-5 shadow-xl flex items-center justify-between">
+                          <div>
+                             <h4 className="text-[16px] font-bold mb-1">🎉 모든 조항 합의 완료!</h4>
+                             <p className="text-[13px] font-medium opacity-90">이제 전자서명을 진행해주세요.</p>
+                          </div>
+                          <button onClick={() => setActiveTab('sign')} className="px-4 py-2.5 bg-white text-[#6542F1] text-[14px] font-bold rounded-[12px] shadow-sm">
+                             서명하기
                           </button>
+                       </div>
+                    </div>
+                  )}
 
-                          {(isRisk || isWarning) && (
-                            <button
-                              onClick={() => handleFetchCoach(item.category || '위험 조항', item.explanation || item.clause_text)}
-                              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline"
-                            >
-                              💡 AI 협상코칭 제안받기
-                            </button>
-                          )}
+                  <nav className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-3 flex justify-between items-center text-[10px] font-bold text-gray-400 pb-safe z-10">
+                    <button className="flex flex-col items-center gap-1.5 p-2">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                      Home
+                    </button>
+                    <button onClick={() => setActiveTab('contracts')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${activeTab === 'contracts' ? 'text-[#6542F1]' : ''}`}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                      Contracts
+                    </button>
+                    <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${activeTab === 'chat' ? 'text-[#6542F1]' : ''}`}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                      Chat
+                    </button>
+                    <button className="flex flex-col items-center gap-1.5 p-2">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                      Settings
+                    </button>
+                  </nav>
+              </div>
+            )}
+
+            {activeTab === 'chat' && (
+              <div className="flex-1 flex flex-col overflow-hidden bg-white">
+                {/* Header */}
+                <div className="flex items-center justify-between px-5 pt-10 pb-4 bg-white border-b border-gray-100 z-10">
+                  <button onClick={() => setActiveTab('contracts')} className="p-1 -ml-2">
+                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                  </button>
+                  <h2 className="text-[17px] font-extrabold text-gray-900 mx-auto -mr-2">{role === 'tenant' ? '임대인' : '임차인'}</h2>
+                  <div className="flex gap-2">
+                    <button className="p-2"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path></svg></button>
+                    <button className="p-2"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1.5"></circle><circle cx="19" cy="12" r="1.5"></circle><circle cx="5" cy="12" r="1.5"></circle></svg></button>
+                  </div>
+                </div>
+
+                {/* Chat List */}
+                <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 pb-4">
+                   {/* Fixed Document Card (from image) */}
+                   <div className="bg-white border border-gray-200 rounded-[24px] p-5 mx-1 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="w-[46px] h-[46px] bg-[#F9FAFC] border border-gray-100 rounded-xl flex items-center justify-center shrink-0">
+                           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        </div>
+                        <div>
+                           <h4 className="text-[16px] font-extrabold text-gray-900 mb-0.5">
+                             {session?.filename || '업로드된 계약서'}
+                           </h4>
+                           <p className="text-[12px] font-bold text-gray-400">
+                             {formatFileSize(session?.file_size)} · {getFileExtension(session?.filename)}
+                           </p>
                         </div>
                       </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Right Side: Chat & E-Signature Canvas */}
-          <div className="flex flex-col max-h-[calc(100vh-100px)] border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-sm">
-            
-            {/* Signature Draw Area (Shows only when all clauses resolved) */}
-            {unresolvedCriticalCount === 0 ? (
-              <div className="bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-b border-gray-200 dark:border-gray-800 p-6 flex flex-col items-center">
-                <div className="text-center mb-4">
-                  <h3 className="text-lg font-bold text-blue-700 dark:text-blue-400">🚨 최종 전자서명 진행 가능</h3>
-                  <p className="text-xs text-gray-500 mt-1">모든 조항에 동의했습니다. 아래 패드에 서명한 뒤 완료해 주세요.</p>
-                </div>
-
-                {hasSigned ? (
-                  <div className="text-center p-4 border border-blue-200 dark:border-blue-900 rounded-2xl bg-white dark:bg-gray-900 w-full max-w-sm">
-                    <span className="text-xs text-emerald-500 font-bold block mb-2">✓ 내 서명 등록 완료 (상대방 대기 중)</span>
-                    <div className="h-20 flex items-center justify-center">
-                      <img src={mySignature?.signature_image} alt="내 서명" className="max-h-full max-w-full dark:invert" />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center w-full max-w-sm">
-                    <canvas
-                      ref={canvasRef}
-                      width={380}
-                      height={150}
-                      onMouseDown={startDrawing}
-                      onMouseMove={draw}
-                      onMouseUp={stopDrawing}
-                      onMouseLeave={stopDrawing}
-                      onTouchStart={startDrawing}
-                      onTouchMove={draw}
-                      onTouchEnd={stopDrawing}
-                      className="border-2 border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 rounded-2xl cursor-crosshair touch-none w-full"
-                    />
-                    <div className="flex gap-2 w-full mt-3 justify-end">
-                      <button onClick={clearCanvas} className="text-xs font-semibold px-4 py-2 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 rounded-lg">
-                        지우기
-                      </button>
-                      <button
-                        onClick={handleSubmitSignature}
-                        disabled={submittingSignature}
-                        className="text-xs font-semibold px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50"
-                      >
-                        {submittingSignature ? '제출 중...' : '서명 등록 완료'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 p-4 text-center">
-                <span className="text-xs font-bold text-gray-500">
-                  ⚠️ 서명 조건: 아직 합의되지 않은 조항이 {unresolvedCriticalCount}개 존재합니다.
-                </span>
-              </div>
-            )}
-
-            {/* AI Coach Suggestion Drawer (Overlays when active) */}
-            {activeCoachClause && (
-              <div className="bg-blue-50 dark:bg-blue-950/40 p-4 border-b border-blue-200 dark:border-blue-900 flex flex-col">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs font-extrabold text-blue-700 dark:text-blue-400">💡 AI 협상 코칭: {activeCoachClause}</h4>
-                  <button onClick={() => setActiveCoachClause(null)} className="text-xs text-gray-400 hover:text-black">닫기</button>
-                </div>
-
-                <div className="flex gap-1.5 mb-3">
-                  {(['soft', 'firm', 'formal'] as const).map(t => (
-                    <button
-                      key={t}
-                      onClick={() => setCoachTone(t)}
-                      className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                        coachTone === t ? 'bg-blue-600 text-white' : 'bg-white dark:bg-gray-800 text-gray-600 border border-gray-200 dark:border-gray-700'
-                      }`}
-                    >
-                      {t === 'soft' ? '부드럽게' : t === 'firm' ? '정중하게' : '공식적으로'}
-                    </button>
-                  ))}
-                </div>
-
-                {coachLoading ? (
-                  <div className="text-xs text-gray-500 animate-pulse py-2">협상 대안을 생각하고 있습니다...</div>
-                ) : coachData ? (
-                  <div className="space-y-3 bg-white dark:bg-gray-900 p-3 rounded-2xl border border-blue-100 dark:border-blue-900 text-xs">
-                    <p className="font-semibold">{coachData.message}</p>
-                    <button
-                      onClick={() => handleApplyCoachMessage(coachData.message)}
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-1.5 rounded-lg text-[10px]"
-                    >
-                      이 메시지 채팅창에 입력하기
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => handleFetchCoach(activeCoachClause, clauses.find(c => c.category === activeCoachClause)?.clause_text || "")}
-                    className="w-full py-1.5 bg-blue-600 text-white font-bold rounded-lg text-xs"
-                  >
-                    코칭 가이드 생성하기
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Chat Messages Log */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[250px] bg-gray-50/50 dark:bg-gray-900/10">
-              {messages.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-center text-gray-400 text-xs">
-                  대화 기록이 없습니다. 조항 수정을 위해 상대방에게 메시지를 건네보세요!
-                </div>
-              ) : (
-                messages.map((msg) => {
-                  const isMe = msg.sender_role === role;
-                  return (
-                    <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                      <span className="text-[10px] text-gray-400 mb-1">
-                        {msg.sender_role === 'tenant' ? '임차인' : '임대인'}
-                      </span>
-                      <div className={`p-3 px-4 rounded-2xl max-w-[80%] text-sm leading-relaxed ${
-                        isMe
-                          ? 'bg-blue-600 text-white rounded-tr-none'
-                          : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-tl-none'
-                      }`}>
-                        {msg.text}
+                      <div className="flex gap-2">
+                         <button className="flex-1 py-3 bg-white border border-gray-200 rounded-[14px] text-[14px] font-bold text-gray-900 shadow-sm">다운로드</button>
+                         <button onClick={() => setActiveTab('contracts')} className="flex-1 py-3 bg-[#6542F1] rounded-[14px] text-[14px] font-bold text-white shadow-sm">AI 검토하기</button>
                       </div>
+                   </div>
+
+                   {/* Messages */}
+                   {messages.map((msg) => {
+                     const isMe = msg.sender_role === role;
+                     const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '방금 전';
+                     return (
+                       <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                         <div className={`px-5 py-3.5 rounded-[20px] max-w-[85%] text-[15px] font-medium leading-relaxed shadow-[0_2px_8px_rgba(0,0,0,0.02)] ${
+                           isMe ? 'bg-[#6542F1] text-white rounded-tr-[6px]' : 'bg-white border border-gray-200 text-gray-900 rounded-tl-[6px]'
+                         }`}>
+                           {msg.text}
+                         </div>
+                         <span className={`text-[10px] font-bold text-gray-400 mt-1.5 px-2 flex items-center gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                            {timeStr}
+                            {isMe && msg.is_read && (
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                            )}
+                         </span>
+                       </div>
+                     );
+                   })}
+                   {coachLoading && (
+                     <div className="flex flex-col items-start mb-4">
+                       <div className="px-5 py-4 rounded-[20px] bg-white border border-gray-100 text-gray-900 rounded-tl-[6px] shadow-sm flex items-center gap-3">
+                         <div className="flex gap-1.5 items-center">
+                            <span className="w-2 h-2 bg-[#6542F1] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                            <span className="w-2 h-2 bg-[#6542F1] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                            <span className="w-2 h-2 bg-[#6542F1] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                         </div>
+                         <span className="text-[14px] font-bold text-gray-500">AI가 협상 메시지를 작성하고 있어요...</span>
+                       </div>
+                     </div>
+                   )}
+                   <div ref={chatEndRef} />
+                </div>
+
+                {/* Input Form area */}
+                <div className="bg-white px-4 py-4 pb-20 border-t border-gray-100 relative">
+                   <form onSubmit={handleSendMessage} className="relative">
+                      <textarea 
+                         value={chatText} 
+                         onChange={(e) => setChatText(e.target.value)} 
+                         placeholder="" 
+                         className="w-full h-[180px] bg-white border-[2.5px] border-[#6542F1] rounded-[24px] p-5 pb-14 text-[15px] font-medium text-gray-900 placeholder:text-gray-400 resize-none focus:outline-none shadow-sm"
+                      />
+                      <button type="button" className="absolute left-4 bottom-4 w-10 h-10 flex items-center justify-center">
+                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                      </button>
+                      <button type="submit" className="absolute right-4 bottom-4 w-10 h-10 bg-[#6542F1] text-white rounded-full flex items-center justify-center shadow-md">
+                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                      </button>
+                   </form>
+                </div>
+
+                <nav className="absolute bottom-0 w-full bg-white border-t border-gray-100 px-6 py-3 flex justify-between items-center text-[10px] font-bold text-gray-400 pb-safe z-10">
+                  <button className="flex flex-col items-center gap-1.5 p-2">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+                    Home
+                  </button>
+                  <button onClick={() => setActiveTab('contracts')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${activeTab === 'contracts' ? 'text-[#6542F1]' : ''}`}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                    Contracts
+                  </button>
+                  <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${activeTab === 'chat' ? 'text-[#6542F1]' : ''}`}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    Chat
+                  </button>
+                  <button className="flex flex-col items-center gap-1.5 p-2">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Settings
+                  </button>
+                </nav>
+              </div>
+            )}
+
+             {activeTab === 'sign' && (
+               <div className="flex-1 flex flex-col overflow-hidden bg-white">
+                 {/* Header */}
+                 <div className="flex items-center justify-between px-5 pt-10 pb-4 bg-white border-b border-gray-100 z-10">
+                   <button onClick={() => setActiveTab('contracts')} className="p-1 -ml-2">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                   </button>
+                   <h2 className="text-[19px] font-extrabold text-gray-900 mx-auto pr-6">전자서명 진행</h2>
+                 </div>
+                 
+                 <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6 pb-8">
+                    {/* Section 1: Final Contract */}
+                    <div>
+                       <h3 className="text-[17px] font-bold text-gray-900 mb-3">최종계약서</h3>
+                       <div className="bg-white border border-gray-200 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.02)]">
+                          <div className="flex items-center gap-4 mb-4">
+                             <div className="w-[46px] h-[46px] bg-[#F9FAFC] border border-gray-100 rounded-xl flex items-center justify-center shrink-0">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                             </div>
+                             <div>
+                                <h4 className="text-[16px] font-extrabold text-gray-900 mb-0.5">
+                                  {session?.filename || '업로드된 계약서.pdf'}
+                                </h4>
+                                <p className="text-[13px] font-bold text-gray-400">
+                                  {formatFileSize(session?.file_size)} · {getFileExtension(session?.filename)}
+                                </p>
+                             </div>
+                          </div>
+                          <div className="border-t border-gray-100 pt-4 text-center">
+                             <span className="text-[13px] font-extrabold text-gray-900">1/12페이지</span>
+                          </div>
+                       </div>
                     </div>
-                  );
-                })
-              )}
-              <div ref={chatEndRef} />
-            </div>
 
-            {/* Chat Input form */}
-            <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-800 flex gap-2">
-              <input
-                type="text"
-                value={chatText}
-                onChange={(e) => setChatText(e.target.value)}
-                placeholder="메시지를 입력해 주세요..."
-                className="flex-1 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-4 py-2 rounded-2xl text-sm focus:outline-none focus:border-blue-500"
-              />
-              <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-2xl text-sm transition-colors">
-                전송
-              </button>
-            </form>
+                    {/* Section 2: Participants */}
+                    <div>
+                       <h3 className="text-[17px] font-bold text-gray-900 mb-3">서명 참여자</h3>
+                       <div className="bg-white border border-gray-200 rounded-[20px] shadow-[0_2px_12px_rgba(0,0,0,0.02)] overflow-hidden">
+                          <div className="flex items-center justify-between p-4 border-b border-gray-100">
+                             <div className="flex items-center gap-3">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                <span className="text-[15px] font-bold text-gray-800">홍길동(임차인)</span>
+                             </div>
+                             <span className={`px-3 py-1 text-[12px] font-bold rounded-md ${signatures.some(s => s.role === 'tenant') ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FFEDD5] text-[#9A3412]'}`}>
+                                {signatures.some(s => s.role === 'tenant') ? '서명완료' : '서명대기'}
+                             </span>
+                          </div>
+                          <div className="flex items-center justify-between p-4">
+                             <div className="flex items-center gap-3">
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                                <span className="text-[15px] font-bold text-gray-800">00공인중개사(임대인 대리)</span>
+                             </div>
+                             <span className={`px-3 py-1 text-[12px] font-bold rounded-md ${signatures.some(s => s.role === 'landlord') ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FFEDD5] text-[#9A3412]'}`}>
+                                {signatures.some(s => s.role === 'landlord') ? '서명완료' : '서명대기'}
+                             </span>
+                          </div>
+                       </div>
+                    </div>
 
-          </div>
-        </div>
-      )}
-    </main>
+                    {/* Section 3: Canvas */}
+                    <div>
+                       <h3 className="text-[17px] font-bold text-gray-900 mb-3">내 서명</h3>
+                       <div className="bg-[#F9FAFC] border border-gray-200 rounded-[20px] p-2 shadow-[0_2px_12px_rgba(0,0,0,0.02)]">
+                          <canvas
+                             ref={canvasRef}
+                             width={320}
+                             height={120}
+                             onMouseDown={startDrawing}
+                             onMouseMove={draw}
+                             onMouseUp={stopDrawing}
+                             onMouseLeave={stopDrawing}
+                             onTouchStart={startDrawing}
+                             onTouchMove={draw}
+                             onTouchEnd={stopDrawing}
+                             className="w-full bg-white rounded-xl cursor-crosshair border border-gray-100"
+                          />
+                          <button onClick={clearCanvas} className="w-full text-center text-[13px] font-bold text-gray-400 py-3 mt-1 hover:text-gray-600 transition-colors">
+                             서명 변경
+                          </button>
+                       </div>
+                    </div>
+
+                    <div className="pt-4 pb-2">
+                      <p className="text-center text-[14px] font-bold text-gray-400 mb-4">서명 완료후 계약서가 자동 저장됩니다.</p>
+                      <button onClick={handleSubmitSignature} disabled={submittingSignature} className="w-full py-4 bg-[#6542F1] hover:bg-[#5233c8] transition-colors text-white text-[17px] font-bold rounded-[20px] shadow-lg shadow-indigo-200 flex items-center justify-center">
+                         {submittingSignature ? '제출 중...' : '전자 서명 완료하기'}
+                      </button>
+                    </div>
+                 </div>
+               </div>
+             )}
+           </>
+         )}
+      </main>
+    </div>
   );
 }

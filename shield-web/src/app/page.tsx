@@ -1,68 +1,156 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 
 export default function Home() {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    setIsDark(document.documentElement.classList.contains('dark'));
-  }, []);
-
-  const toggleTheme = () => {
-    if (document.documentElement.classList.contains('dark')) {
-      document.documentElement.classList.remove('dark');
-      setIsDark(false);
-    } else {
-      document.documentElement.classList.add('dark');
-      setIsDark(true);
-    }
-  };
-
   return (
-    <main className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-50 transition-colors duration-200">
-      {/* Navigation */}
-      <nav className="fixed w-full z-50 border-b border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-xl font-bold">
-              계약방패
-            </Link>
-            <Link href="/features" className="text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors">기능 소개</Link>
-          </div>
-          <div className="flex items-center gap-4 text-sm font-medium">
-            <button onClick={toggleTheme} className="p-2 px-4 bg-gray-200 dark:bg-gray-800 rounded-full hover:bg-gray-300 dark:hover:bg-gray-700 transition-colors">
-              {isDark ? '라이트 모드' : '다크 모드'}
-            </button>
-            <Link href="/upload" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-              시작하기
-            </Link>
-          </div>
-        </div>
-      </nav>
+    <div className="min-h-screen bg-[#F9FAFC] flex justify-center">
+      <main className="w-full max-w-md bg-[#F9FAFC] text-gray-900 flex flex-col relative pb-10 shadow-sm min-h-screen">
+        {/* Header */}
+        <header className="flex items-center justify-between px-6 pt-10 pb-4">
+          <h1 className="text-[26px] font-extrabold tracking-tight" style={{ color: '#6542F1' }}>SIGNAL</h1>
+          <button className="p-2 -mr-2 text-gray-700 hover:text-gray-900 transition-colors">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+          </button>
+        </header>
 
-      {/* Hero Section */}
-      <section className="pt-32 pb-20 px-6 relative h-screen flex flex-col justify-center">
-        <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-4xl md:text-6xl font-bold tracking-tight mb-8">
-            계약서 사인하기 전,<br />
-            당신의 권리를 지키세요.
-          </h1>
-          <p className="text-lg md:text-xl text-gray-600 dark:text-gray-400 mb-10 max-w-2xl mx-auto leading-relaxed">
-            임대차·근로 계약서를 올리면 숨겨진 위험 조항과 빠진 조항을 찾아내고,
-            상대방에게 보낼 협상 메시지까지 AI가 만들어 드립니다.
+        <div className="px-6 border-b border-gray-200/60 mx-6 mb-8"></div>
+
+        {/* Greeting */}
+        <section className="px-6 mb-8">
+          <h2 className="text-[24px] font-bold leading-snug mb-2 text-gray-900 tracking-tight">
+            안녕하세요, 박지민님!
+          </h2>
+          <p className="text-[16px] text-gray-500 font-medium">
+            계약을 안전하게 관리하세요.
           </p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-            <Link href="/upload" className="group w-full sm:w-auto bg-blue-600 text-white px-8 py-4 rounded-xl font-semibold text-lg hover:bg-blue-700 transition-colors flex items-center justify-center gap-2">
-              계약서 스캔 시작하기
-              <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-              </svg>
-            </Link>
+        </section>
+
+        {/* Primary Action Card */}
+        <section className="px-6 mb-12">
+          <Link href="/upload" className="block relative overflow-hidden rounded-[28px] p-7 shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.98]" style={{ background: 'linear-gradient(135deg, #6747D5 0%, #573AC2 100%)' }}>
+            <div className="relative z-10 text-white">
+              <h3 className="text-[22px] font-bold mb-3 tracking-tight">새 계약 요청</h3>
+              <p className="text-[15px] font-medium text-white/90 leading-relaxed mb-6">
+                계약서 업로드하고<br />AI로 검토해보세요
+              </p>
+            </div>
+            <div className="absolute right-6 bottom-6 z-10">
+              <div className="w-14 h-14 bg-white rounded-[20px] flex items-center justify-center shadow-sm transition-transform hover:scale-105">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#573AC2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </div>
+            </div>
+          </Link>
+        </section>
+
+        {/* In Progress Contracts */}
+        <section className="px-6 mb-10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[18px] font-bold text-gray-900 tracking-tight">진행 중 계약</h3>
+            <span className="px-3.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-full">
+              2건
+            </span>
           </div>
-        </div>
-      </section>
-    </main>
+          
+          <div className="flex flex-col gap-3.5">
+            {/* Card 1 */}
+            <div className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors">
+              <div className="flex items-center gap-4">
+                <div className="w-[52px] h-[52px] bg-[#EEF2F6] rounded-[16px] flex items-center justify-center text-[#9CA3AF]">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7A8B9C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-[17px] font-bold text-gray-900 mb-1">신촌 원룸</h4>
+                  <p className="text-[14px] text-gray-500 mb-2 font-medium">OO공인중개사</p>
+                  <span className="inline-block px-2.5 py-1 bg-[#EAF2FF] text-[#2563EB] text-[12px] font-bold rounded-md">
+                    검토 진행 중
+                  </span>
+                </div>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1C7D0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+
+            {/* Card 2 */}
+            <div className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors">
+              <div className="flex items-center gap-4">
+                <div className="w-[52px] h-[52px] bg-[#F4F1FF] rounded-[16px] flex items-center justify-center">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-[17px] font-bold text-gray-900 mb-1">마포 오피스텔</h4>
+                  <p className="text-[14px] text-gray-500 mb-2 font-medium">OO부동산</p>
+                  <span className="inline-block px-2.5 py-1 bg-[#F4F1FF] text-[#7C3AED] text-[12px] font-bold rounded-md">
+                    협의 중
+                  </span>
+                </div>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1C7D0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+          </div>
+        </section>
+
+        {/* Completed Contracts */}
+        <section className="px-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[18px] font-bold text-gray-900 tracking-tight">완료된 계약</h3>
+            <span className="px-3.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-full">
+              1건
+            </span>
+          </div>
+          
+          <div className="flex flex-col gap-3.5">
+            {/* Card 3 */}
+            <div className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors">
+              <div className="flex items-center gap-4">
+                <div className="w-[52px] h-[52px] bg-[#E1F0FF] rounded-[16px] flex items-center justify-center">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 21h18"></path>
+                    <path d="M9 8h1"></path>
+                    <path d="M9 12h1"></path>
+                    <path d="M9 16h1"></path>
+                    <path d="M14 8h1"></path>
+                    <path d="M14 12h1"></path>
+                    <path d="M14 16h1"></path>
+                    <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-[17px] font-bold text-gray-900 mb-1">강남 투룸</h4>
+                  <p className="text-[14px] text-gray-500 mb-2 font-medium">2024.04.10</p>
+                  <span className="inline-block px-2.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[12px] font-bold rounded-md">
+                    계약 완료
+                  </span>
+                </div>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1C7D0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
   );
 }
