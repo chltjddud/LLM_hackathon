@@ -1,12 +1,24 @@
 'use client';
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabaseClient';
 
 export default function UploadPage() {
   const router = useRouter();
   const [isUploading, setIsUploading] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+      }
+    });
+  }, []);
 
   const convertToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -38,12 +50,21 @@ export default function UploadPage() {
     try {
       const base64 = await convertToBase64(selectedFile);
       const mediaType = selectedFile.type || 'application/pdf';
+
+      // Get user session to retrieve the access token for backend auth
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
       
       const response = await fetch('/api/session', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           imageBase64: base64,
           mediaType: mediaType,
@@ -81,18 +102,37 @@ export default function UploadPage() {
     return name.split('.').pop()?.toUpperCase() || 'FILE';
   };
 
+  const onDrop = (e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F9FAFC] flex justify-center">
       <main className="w-full max-w-md bg-[#F9FAFC] text-gray-900 flex flex-col relative pb-10 shadow-sm min-h-screen">
         {/* Navigation */}
         <header className="flex items-center justify-between px-6 pt-10 pb-4">
           <Link href="/" className="text-[26px] font-extrabold tracking-tight" style={{ color: '#6542F1' }}>SIGNAL</Link>
-          <button className="p-2 -mr-2 text-gray-700 hover:text-gray-900 transition-colors">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-            </svg>
-          </button>
+          <div className="flex items-center gap-3">
+            {!user && (
+              <Link
+                href="/login"
+                className="text-[13px] font-bold text-[#6542F1] bg-[#F4F1FF] hover:bg-[#EAE5FC] px-3.5 py-1.5 rounded-full transition-colors"
+              >
+                로그인 / 가입
+              </Link>
+            )}
+            <button className="p-2 -mr-2 text-gray-700 hover:text-gray-900 transition-colors">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+              </svg>
+            </button>
+          </div>
         </header>
 
         <div className="px-6 border-b border-gray-200/60 mx-6 mb-8"></div>
@@ -108,7 +148,21 @@ export default function UploadPage() {
 
           {/* Conditional Upload Area */}
           {!selectedFile ? (
-            <label htmlFor="contract-file" className="block w-full border-[2px] border-dashed border-[#CBBBF3] hover:border-[#6542F1] transition-colors bg-[#F6F5FD] rounded-[24px] p-8 flex flex-col items-center text-center cursor-pointer mb-5">
+            <label
+              htmlFor="contract-file"
+              data-testid="dropzone"
+              onDragOver={(e) => {
+                e.preventDefault();
+                setIsDragging(true);
+              }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={onDrop}
+              className={`block w-full border-[2px] border-dashed rounded-[24px] p-8 flex flex-col items-center text-center cursor-pointer mb-5 transition-colors ${
+                isDragging
+                  ? 'border-[#6542F1] bg-[#F4F1FF]'
+                  : 'border-[#CBBBF3] bg-[#F6F5FD] hover:border-[#6542F1]'
+              }`}
+            >
               <div className="w-14 h-14 bg-white shadow-sm rounded-[16px] flex items-center justify-center mb-5">
                 <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -117,7 +171,7 @@ export default function UploadPage() {
                 </svg>
               </div>
               <h3 className="text-[20px] font-bold mb-2 text-gray-900 tracking-tight">계약서를 업로드하세요</h3>
-              <p className="text-[15px] text-gray-500 font-medium mb-4">파일을 선택하여 계약서를 등록해주세요.</p>
+              <p className="text-[15px] text-gray-500 font-medium mb-4">여기에 사진을 끌어다 놓거나 클릭해서 파일 선택</p>
               <p className="text-[13px] text-gray-400 font-medium mb-6 tracking-wide">PDF, JPG, PNG · 최대 10MB</p>
               
               <div className="bg-[#6542F1] text-white font-bold text-[16px] py-4 px-8 rounded-full shadow-[0_4px_12px_rgba(101,66,241,0.25)] hover:bg-[#573AC2] transition-colors w-full flex items-center justify-center">

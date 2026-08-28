@@ -10,9 +10,10 @@ export async function GET(
 
   const [{ data: session, error: sessionError }, { data: clauses }, { data: messages }, { data: signatures }] =
     await Promise.all([
-      supabase.from("sessions").select().eq("id", id).single(),
+      supabase.from("sessions").select("id, status, created_at, tenant_user_id, landlord_user_id, filename, file_size, image_s3_url, signed_document_url").eq("id", id).single(),
       supabase.from("clauses").select().eq("session_id", id).order("created_at"),
       supabase.from("messages").select().eq("session_id", id).order("created_at"),
+
       supabase.from("signatures").select().eq("session_id", id),
     ]);
 

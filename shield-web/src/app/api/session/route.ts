@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { analyzeContractImage } from "@/lib/analyzeContract";
 import { supabase } from "@/lib/supabase";
+import { getUserFromRequest } from "@/lib/auth";
 
 // 세입자가 사진을 올려서 새 협상 세션을 만듭니다.
 export async function POST(req: NextRequest) {
@@ -10,10 +11,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "imageBase64가 필요합니다." }, { status: 400 });
   }
 
+  const user = await getUserFromRequest(req);
+
   // 1. 세션을 먼저 'analyzing' 상태로 생성하여 즉시 응답합니다.
+  const imageUrl = `data:${mediaType};base64,${imageBase64}`;
   const { data: session, error: sessionError } = await supabase
     .from("sessions")
-    .insert({ status: "analyzing", filename, file_size: fileSize })
+    .insert({ status: "analyzing", filename, file_size: fileSize, tenant_user_id: user?.id ?? null, image_url: imageUrl })
     .select()
     .single();
 
@@ -29,6 +33,7 @@ export async function POST(req: NextRequest) {
       const rows = clauses.map((c) => ({
         session_id: session.id,
         clause_text: c.clause_text,
+        original_text: c.clause_text,
         category_id: c.category_id,
         risk_level: c.risk_level,
         category: c.category,

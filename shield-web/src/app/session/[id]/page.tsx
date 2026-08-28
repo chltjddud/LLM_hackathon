@@ -32,6 +32,9 @@ export default function SessionPage() {
   const [submittingSignature, setSubmittingSignature] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  
+  // Popup state
+  const [showChangesPopup, setShowChangesPopup] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -57,7 +60,7 @@ export default function SessionPage() {
 
   const messagesLength = messages.length;
   useEffect(() => {
-    if (activeTab === 'chat') {
+    if ((activeTab as any) === 'chat') {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [messagesLength, activeTab]);
@@ -242,6 +245,7 @@ export default function SessionPage() {
       });
       if (!res.ok) throw new Error('서명 제출 실패');
       clearCanvas();
+      window.location.href = `/session/${id}/complete`;
     } catch (err) {
       alert('서명 등록 중 오류가 발생했습니다.');
     } finally {
@@ -251,7 +255,11 @@ export default function SessionPage() {
 
   const copyShareLink = () => {
     const link = `${window.location.origin}/session/${id}?role=${role === 'tenant' ? 'landlord' : 'tenant'}`;
-    navigator.clipboard.writeText(link).then(() => alert('상대방에게 공유할 협상 링크가 복사되었습니다!'));
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(link).then(() => alert('상대방에게 공유할 협상 링크가 복사되었습니다!'));
+    } else {
+      window.prompt('아래 링크를 복사하여 공유해주세요.', link);
+    }
   };
 
   if (isLoading) {
@@ -284,9 +292,9 @@ export default function SessionPage() {
           
           <div className="flex-1 overflow-y-auto px-5 py-6 space-y-5 pb-28">
             {/* Card 1: Risk Detail */}
-            <div className={`relative overflow-hidden rounded-[24px] p-6 ${selectedClause.risk_level === '위험' ? 'bg-[#FFF5F5] border border-[#FEE2E2]' : 'bg-[#FFF7ED] border border-[#FFEDD5]'}`}>
-              <p className={`text-[13px] font-bold mb-2 flex items-center gap-1.5 ${selectedClause.risk_level === '위험' ? 'text-[#EF4444]' : 'text-[#F97316]'}`}>
-                {selectedClause.risk_level === '위험' ? '🔥 위험 조항' : '⚠️ 주의 조항'}
+            <div className={`relative overflow-hidden rounded-[24px] p-6 ${selectedClause.risk_level === '위험' ? 'bg-gray-50 border border-gray-200' : 'bg-gray-50 border border-gray-200'}`}>
+              <p className={`text-[13px] font-bold mb-2 flex items-center gap-1.5 ${selectedClause.risk_level === '위험' ? 'text-[#6542F1]' : 'text-[#6542F1]'}`}>
+                {selectedClause.risk_level === '위험' ? '위험 조항' : '주의 조항'}
               </p>
               <h3 className="text-[22px] font-extrabold text-gray-900 mb-2 pr-6 leading-tight">{selectedClause.category || '조항 상세'}</h3>
               <p className="text-[14px] text-gray-500 mb-4">{selectedClause.clause_text ? selectedClause.clause_text.substring(0, 50) + (selectedClause.clause_text.length > 50 ? '...' : '') : '내용 없음'}</p>
@@ -294,29 +302,29 @@ export default function SessionPage() {
             </div>
 
             {/* Card 2: Law */}
-            <div className="bg-[#F4F6FC] rounded-[24px] p-6 border border-[#E0E7FF]">
-              <p className="text-[#3B82F6] text-[14px] font-bold mb-2 flex items-center gap-1.5">⚖️ 관련 법령 근거</p>
-              <h4 className="text-[16px] font-extrabold text-[#4F46E5] leading-relaxed">
+            <div className="bg-gray-50 rounded-[24px] p-6 border border-gray-200">
+              <p className="text-[#6542F1] text-[14px] font-bold mb-2 flex items-center gap-1.5">관련 법령 근거</p>
+              <h4 className="text-[16px] font-extrabold text-gray-900 leading-relaxed">
                 {selectedClause.law_basis || '관련 법령 정보가 없습니다.'}
               </h4>
             </div>
 
             {/* Card 3: Guide */}
-            <div className="bg-[#F0FDF4] border border-[#DCFCE7] rounded-[24px] p-6 mb-4">
-              <p className="text-[#059669] text-[15px] font-bold mb-4 flex items-center gap-1.5">💡 AI 협상 가이드</p>
+            <div className="bg-gray-50 border border-gray-200 rounded-[24px] p-6 mb-4">
+              <p className="text-[#6542F1] text-[15px] font-bold mb-4 flex items-center gap-1.5">AI 협상 가이드</p>
               <ul className="space-y-3">
                 {selectedClause.keyword_hint && selectedClause.keyword_hint.length > 0 ? (
                   selectedClause.keyword_hint.map((item: string, i: number) => (
                     <li key={i} className="flex items-start gap-2">
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
                       <span className="text-[15px] text-gray-700 font-medium leading-relaxed">
-                        <strong className="text-[#059669]">[{item}]</strong> 키워드를 중심으로 협상을 진행해보세요.
+                        <strong className="text-[#6542F1]">[{item}]</strong> 키워드를 중심으로 협상을 진행해보세요.
                       </span>
                     </li>
                   ))
                 ) : (
                   <li className="flex items-start gap-2">
-                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
                      <span className="text-[15px] text-gray-700 font-medium leading-relaxed">
                        해당 조항의 위험성을 언급하며 수정을 요청하세요.
                      </span>
@@ -394,7 +402,7 @@ export default function SessionPage() {
           </div>
         ) : (
           <>
-            {activeTab === 'contracts' && (
+            {(activeTab as any) === 'contracts' && (
               <div className="flex-1 flex flex-col bg-white overflow-hidden pb-20">
                 {/* Top Header */}
                 <header className="flex items-center justify-between px-5 pt-10 pb-4">
@@ -421,13 +429,13 @@ export default function SessionPage() {
 
                   <div className="px-5">
                     {/* Score Card */}
-                    <div className="bg-[#F8F7FF] border border-[#E3DCFA] rounded-[24px] p-6 mb-5 relative overflow-hidden">
-                      <p className="text-[#3B82F6] text-[13px] font-bold mb-3">계약서를 꼼꼼하게 분석했어요!</p>
+                    <div className="bg-gray-50 border border-gray-200 rounded-[24px] p-6 mb-5 relative overflow-hidden">
+                      <p className="text-[#6542F1] text-[13px] font-bold mb-3">계약서를 꼼꼼하게 분석했어요!</p>
                       <h3 className="text-[15px] font-bold text-gray-900 mb-1">종합 위험 점수</h3>
                       <div className="flex items-baseline gap-2 mb-4">
-                        <span className="text-[42px] font-black text-[#4F46E5] leading-none tracking-tighter">{score}</span>
+                        <span className="text-[42px] font-black text-gray-900 leading-none tracking-tighter">{score}</span>
                         <span className="text-[24px] font-bold text-gray-400">/100</span>
-                        <span className="ml-2 px-3 py-1 bg-[#D1FAE5] text-[#059669] text-[13px] font-bold rounded-full">보통</span>
+                        <span className="ml-2 px-3 py-1 bg-[#D1FAE5] text-[#6542F1] text-[13px] font-bold rounded-full">보통</span>
                       </div>
                       <div className="w-full h-2.5 bg-gray-200 rounded-full overflow-hidden flex">
                         <div className="h-full bg-[#10B981]" style={{ width: '60%' }}></div>
@@ -435,24 +443,24 @@ export default function SessionPage() {
                         <div className="h-full bg-gray-200" style={{ width: '15%' }}></div>
                       </div>
                       <div className="absolute top-6 right-2 w-24 h-24 flex items-center justify-center opacity-90">
-                        <div className="text-[64px]">🐶</div>
-                        <div className="absolute bottom-2 left-0 text-[32px]">🔍</div>
+                        
+                        
                       </div>
                     </div>
 
                     {/* Summary Boxes */}
                     <div className="flex gap-3 mb-8">
-                      <div className="flex-1 bg-white border border-[#FEE2E2] rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-                        <p className="text-[13px] font-bold text-[#EF4444] mb-1">위험 조항</p>
-                        <p className="text-[24px] font-black text-[#EF4444]"><span className="text-[28px]">{riskClauses.length}</span><span className="text-[16px]">개</span></p>
+                      <div className="flex-1 bg-white border border-gray-200 rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+                        <p className="text-[13px] font-bold text-[#6542F1] mb-1">위험 조항</p>
+                        <p className="text-[24px] font-black text-[#6542F1]"><span className="text-[28px]">{riskClauses.length}</span><span className="text-[16px]">개</span></p>
                       </div>
-                      <div className="flex-1 bg-white border border-[#FFEDD5] rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-                        <p className="text-[13px] font-bold text-[#F97316] mb-1">주의 조항</p>
-                        <p className="text-[24px] font-black text-[#F97316]"><span className="text-[28px]">{warningClauses.length}</span><span className="text-[16px]">개</span></p>
+                      <div className="flex-1 bg-white border border-gray-200 rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+                        <p className="text-[13px] font-bold text-[#6542F1] mb-1">주의 조항</p>
+                        <p className="text-[24px] font-black text-[#6542F1]"><span className="text-[28px]">{warningClauses.length}</span><span className="text-[16px]">개</span></p>
                       </div>
-                      <div className="flex-1 bg-white border border-[#E0E7FF] rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
-                        <p className="text-[13px] font-bold text-[#3B82F6] mb-1">누락 항목</p>
-                        <p className="text-[24px] font-black text-[#3B82F6]"><span className="text-[28px]">{missingClauses.length || 0}</span><span className="text-[16px]">개</span></p>
+                      <div className="flex-1 bg-white border border-gray-200 rounded-[20px] p-4 text-center shadow-[0_2px_8px_rgba(0,0,0,0.02)]">
+                        <p className="text-[13px] font-bold text-[#6542F1] mb-1">누락 항목</p>
+                        <p className="text-[24px] font-black text-[#6542F1]"><span className="text-[28px]">{missingClauses.length || 0}</span><span className="text-[16px]">개</span></p>
                       </div>
                     </div>
 
@@ -466,7 +474,7 @@ export default function SessionPage() {
                         {[...riskClauses, ...warningClauses].map((clause, idx) => (
                           <div key={clause.id} className="bg-white border border-gray-200 rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] cursor-pointer hover:border-[#6542F1] hover:shadow-md transition-all" onClick={() => setSelectedClause(clause)}>
                             <div className="flex items-start gap-3">
-                              <div className={`w-[26px] h-[26px] rounded-full flex items-center justify-center text-white text-[13px] font-bold shrink-0 mt-0.5 ${clause.risk_level === '위험' ? 'bg-[#EF4444]' : 'bg-[#F97316]'}`}>
+                              <div className={`w-[26px] h-[26px] rounded-full flex items-center justify-center text-white text-[13px] font-bold shrink-0 mt-0.5 ${clause.risk_level === '위험' ? 'bg-[#6542F1]' : 'bg-[#6542F1]'}`}>
                                 {idx + 1}
                               </div>
                               <div className="flex-1 pr-2">
@@ -495,7 +503,7 @@ export default function SessionPage() {
                         {missingClauses.length > 0 ? missingClauses.map((clause, idx) => (
                           <div key={clause.id} className="bg-white border border-gray-200 rounded-[20px] p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)]">
                             <div className="flex items-start gap-3">
-                              <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-white text-[13px] font-bold shrink-0 mt-0.5 bg-[#3B82F6]">
+                              <div className="w-[26px] h-[26px] rounded-full flex items-center justify-center text-white text-[13px] font-bold shrink-0 mt-0.5 bg-[#6542F1]">
                                 {idx + riskClauses.length + warningClauses.length + 1}
                               </div>
                               <div className="flex-1 pr-2">
@@ -510,10 +518,10 @@ export default function SessionPage() {
                       </div>
                     </div>
 
-                    <div className="bg-[#F6F8FE] border border-[#E0E7FF] rounded-[24px] p-5 flex items-center gap-4 mb-8">
-                      <div className="text-[40px]">🐶</div>
+                    <div className="bg-[#F6F8FE] border border-gray-200 rounded-[24px] p-5 flex items-center gap-4 mb-8">
+                      
                       <div>
-                        <h4 className="text-[15px] font-bold text-[#4F46E5] mb-0.5">위험 조항을 확인했어요!</h4>
+                        <h4 className="text-[15px] font-bold text-gray-900 mb-0.5">위험 조항을 확인했어요!</h4>
                         <p className="text-[13px] text-gray-500 font-medium">상세 내용을 보고 안전하게 조정해보세요.</p>
                       </div>
                     </div>
@@ -525,10 +533,10 @@ export default function SessionPage() {
                     <div className="absolute bottom-[76px] left-0 w-full px-5 z-20">
                        <div className="bg-[#6542F1] text-white rounded-[20px] p-5 shadow-xl flex items-center justify-between">
                           <div>
-                             <h4 className="text-[16px] font-bold mb-1">🎉 모든 조항 합의 완료!</h4>
+                             <h4 className="text-[16px] font-bold mb-1">모든 조항 합의 완료!</h4>
                              <p className="text-[13px] font-medium opacity-90">이제 전자서명을 진행해주세요.</p>
                           </div>
-                          <button onClick={() => setActiveTab('sign')} className="px-4 py-2.5 bg-white text-[#6542F1] text-[14px] font-bold rounded-[12px] shadow-sm">
+                          <button onClick={() => setShowChangesPopup(true)} className="px-4 py-2.5 bg-white text-[#6542F1] text-[14px] font-bold rounded-[12px] shadow-sm">
                              서명하기
                           </button>
                        </div>
@@ -540,11 +548,11 @@ export default function SessionPage() {
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                       Home
                     </button>
-                    <button onClick={() => setActiveTab('contracts')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${activeTab === 'contracts' ? 'text-[#6542F1]' : ''}`}>
+                    <button onClick={() => setActiveTab('contracts')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${(activeTab as any) === 'contracts' ? 'text-[#6542F1]' : ''}`}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                       Contracts
                     </button>
-                    <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${activeTab === 'chat' ? 'text-[#6542F1]' : ''}`}>
+                    <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${(activeTab as any) === 'chat' ? 'text-[#6542F1]' : ''}`}>
                       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                       Chat
                     </button>
@@ -556,7 +564,7 @@ export default function SessionPage() {
               </div>
             )}
 
-            {activeTab === 'chat' && (
+            {(activeTab as any) === 'chat' && (
               <div className="flex-1 flex flex-col overflow-hidden bg-white">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 pt-10 pb-4 bg-white border-b border-gray-100 z-10">
@@ -651,11 +659,11 @@ export default function SessionPage() {
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
                     Home
                   </button>
-                  <button onClick={() => setActiveTab('contracts')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${activeTab === 'contracts' ? 'text-[#6542F1]' : ''}`}>
+                  <button onClick={() => setActiveTab('contracts')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${(activeTab as any) === 'contracts' ? 'text-[#6542F1]' : ''}`}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                     Contracts
                   </button>
-                  <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${activeTab === 'chat' ? 'text-[#6542F1]' : ''}`}>
+                  <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1.5 p-2 transition-colors ${(activeTab as any) === 'chat' ? 'text-[#6542F1]' : ''}`}>
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
                     Chat
                   </button>
@@ -667,7 +675,7 @@ export default function SessionPage() {
               </div>
             )}
 
-             {activeTab === 'sign' && (
+             {(activeTab as any) === 'sign' && (
                <div className="flex-1 flex flex-col overflow-hidden bg-white">
                  {/* Header */}
                  <div className="flex items-center justify-between px-5 pt-10 pb-4 bg-white border-b border-gray-100 z-10">
@@ -757,7 +765,59 @@ export default function SessionPage() {
                     </div>
                  </div>
                </div>
-             )}
+            )}
+            
+            {/* Changes Popup */}
+            {showChangesPopup && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 z-[100] flex items-center justify-center p-5">
+                <div className="bg-white rounded-[24px] w-full max-w-md max-h-[80vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-white z-10">
+                    <h3 className="text-[19px] font-extrabold text-gray-900 tracking-tight">최종 특약사항 확인</h3>
+                    <button onClick={() => setShowChangesPopup(false)} className="text-gray-400 hover:text-gray-700 p-1 bg-gray-50 rounded-full transition-colors">
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                    </button>
+                  </div>
+                  <div className="p-6 overflow-y-auto bg-gray-50 flex-1">
+                    <div className="bg-[#F4F1FF] text-[#6542F1] px-4 py-3 rounded-[14px] mb-5 flex items-start gap-3">
+                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                       <p className="text-[13px] font-bold leading-relaxed">
+                         아래 조항들이 협상을 통해 특약사항으로 합의되었습니다. 서명 후에는 수정할 수 없으니 꼼꼼히 확인해주세요.
+                       </p>
+                    </div>
+                    
+                    <div className="space-y-3">
+                       {clauses.filter(c => c.resolved_by_tenant && c.resolved_by_landlord).map((clause, idx) => (
+                          <div key={clause.id} className="bg-white p-5 rounded-[20px] border border-gray-200 shadow-sm relative overflow-hidden">
+                             <div className="absolute top-0 left-0 w-1 h-full bg-[#6542F1]"></div>
+                             <h4 className="text-[14px] font-bold text-gray-900 mb-2">{clause.category || `추가 조항 ${idx + 1}`}</h4>
+                             <p className="text-[14px] text-gray-600 font-medium leading-relaxed">{clause.explanation || clause.clause_text}</p>
+                          </div>
+                       ))}
+                       {clauses.filter(c => c.resolved_by_tenant && c.resolved_by_landlord).length === 0 && (
+                          <div className="text-center py-8">
+                             <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                             </div>
+                             <p className="text-gray-500 font-bold text-[14px]">추가된 특약사항이 없습니다.</p>
+                          </div>
+                       )}
+                    </div>
+                  </div>
+                  <div className="p-5 bg-white border-t border-gray-100 z-10">
+                    <button 
+                      onClick={() => {
+                         setShowChangesPopup(false);
+                         setActiveTab('sign');
+                      }} 
+                      className="w-full py-4 bg-[#6542F1] text-white text-[16px] font-extrabold rounded-[18px] shadow-lg hover:bg-[#5233d4] transition-colors flex justify-center items-center gap-2"
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                      확인 완료 및 서명하기
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
            </>
          )}
       </main>
