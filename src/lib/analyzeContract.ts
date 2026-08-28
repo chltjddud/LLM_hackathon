@@ -1,14 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
+import { GoogleGenAI } from "@google/genai";
 import riskCriteria from "../../data/risk-criteria.json";
 
-// USE_BEDROCK=true 이면 EC2 인스턴스 프로파일로 Bedrock을 통해 Claude 호출(키 불필요).
-// 로컬 개발에서는 USE_BEDROCK을 안 쓰거나 false로 둬서 ANTHROPIC_API_KEY로 직접 호출.
-const USE_BEDROCK = process.env.USE_BEDROCK === "true";
+// 우선순위: GEMINI_API_KEY 있으면 Gemini, 없고 USE_BEDROCK=true면 Bedrock(키 불필요, EC2 전용),
+// 둘 다 아니면 ANTHROPIC_API_KEY로 Claude 직접 호출.
+const PROVIDER: "gemini" | "bedrock" | "anthropic" = process.env.GEMINI_API_KEY
+  ? "gemini"
+  : process.env.USE_BEDROCK === "true"
+  ? "bedrock"
+  : "anthropic";
+
+const GEMINI_MODEL = "gemini-3.5-flash-lite";
 const BEDROCK_MODEL = "global.anthropic.claude-sonnet-5";
 const DIRECT_MODEL = "claude-sonnet-5";
-
-let cachedClient: Anthropic | AnthropicBedrock | null = null;
 
 // 리전을 하드코딩하면 배정된 리전 외에는 전부 AccessDenied가 나므로,
 // EC2 인스턴스 메타데이터에서 실제 배정된 리전을 읽어와야 한다.
@@ -23,17 +28,6 @@ async function getEc2Region(): Promise<string> {
     { headers: { "X-aws-ec2-metadata-token": token } }
   );
   return (await regionRes.text()).trim();
-}
-
-async function getClient(): Promise<Anthropic | AnthropicBedrock> {
-  if (cachedClient) return cachedClient;
-  if (USE_BEDROCK) {
-    const region = await getEc2Region();
-    cachedClient = new AnthropicBedrock({ awsRegion: region });
-  } else {
-    cachedClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  }
-  return cachedClient;
 }
 
 const CATEGORY_IDS = riskCriteria.map((c) => c.id).join(", ");
@@ -62,6 +56,8 @@ const SYSTEM_PROMPT = `당신은 자취/알바 계약서의 위험 조항을 찾
   }
 ]`;
 
+const USER_INSTRUCTION = "이 계약서 사진을 분석해서 위 형식의 JSON으로만 응답해주세요.";
+
 export type AnalyzedClause = {
   clause_text: string;
   category_id: string | null;
@@ -73,13 +69,36 @@ export type AnalyzedClause = {
   explanation: string | null;
 };
 
-export async function analyzeContractImage(
-  imageBase64: string,
-  mediaType: string
-): Promise<AnalyzedClause[]> {
-  const anthropic = await getClient();
-  const message = await anthropic.messages.create({
-    model: USE_BEDROCK ? BEDROCK_MODEL : DIRECT_MODEL,
+type RawClause = {
+  clause_text: string;
+  category_id: string | null;
+  simulation?: string;
+  message_draft?: string;
+};
+
+async function callGemini(imageBase64: string, mediaType: string): Promise<string> {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const response = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: [
+      { text: SYSTEM_PROMPT },
+      { inlineData: { mimeType: mediaType || "image/jpeg", data: imageBase64 } },
+      { text: USER_INSTRUCTION },
+    ],
+    config: {
+      temperature: 0.1,
+      maxOutputTokens: 8192,
+      responseMimeType: "application/json",
+    },
+  });
+  return response.text ?? "[]";
+}
+
+async function callBedrock(imageBase64: string, mediaType: string): Promise<string> {
+  const region = await getEc2Region();
+  const client = new AnthropicBedrock({ awsRegion: region });
+  const message = await client.messages.create({
+    model: BEDROCK_MODEL,
     max_tokens: 8192,
     system: SYSTEM_PROMPT,
     messages: [
@@ -98,25 +117,58 @@ export async function analyzeContractImage(
               data: imageBase64,
             },
           },
-          {
-            type: "text",
-            text: "이 계약서 사진을 분석해서 위 형식의 JSON으로만 응답해주세요.",
-          },
+          { type: "text", text: USER_INSTRUCTION },
         ],
       },
     ],
   });
-
   const textBlock = message.content.find((b) => b.type === "text");
-  const rawText = textBlock?.type === "text" ? textBlock.text : "[]";
-  const jsonMatch = rawText.match(/\[[\s\S]*\]/);
+  return textBlock?.type === "text" ? textBlock.text : "[]";
+}
 
-  type RawClause = {
-    clause_text: string;
-    category_id: string | null;
-    simulation?: string;
-    message_draft?: string;
-  };
+async function callAnthropicDirect(imageBase64: string, mediaType: string): Promise<string> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const message = await client.messages.create({
+    model: DIRECT_MODEL,
+    max_tokens: 8192,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: (mediaType || "image/jpeg") as
+                | "image/jpeg"
+                | "image/png"
+                | "image/gif"
+                | "image/webp",
+              data: imageBase64,
+            },
+          },
+          { type: "text", text: USER_INSTRUCTION },
+        ],
+      },
+    ],
+  });
+  const textBlock = message.content.find((b) => b.type === "text");
+  return textBlock?.type === "text" ? textBlock.text : "[]";
+}
+
+export async function analyzeContractImage(
+  imageBase64: string,
+  mediaType: string
+): Promise<AnalyzedClause[]> {
+  const rawText =
+    PROVIDER === "gemini"
+      ? await callGemini(imageBase64, mediaType)
+      : PROVIDER === "bedrock"
+      ? await callBedrock(imageBase64, mediaType)
+      : await callAnthropicDirect(imageBase64, mediaType);
+
+  const jsonMatch = rawText.match(/\[[\s\S]*\]/);
 
   let clauses: RawClause[];
   try {
