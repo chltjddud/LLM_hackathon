@@ -14,8 +14,11 @@ export default function SessionPage() {
   const [clauses, setClauses] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [signatures, setSignatures] = useState<any[]>([]);
+  const [proposals, setProposals] = useState<any[]>([]);
   const [chatText, setChatText] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [uploadingProposal, setUploadingProposal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Mobile Tab State
   const [activeTab, setActiveTab] = useState<'contracts' | 'chat' | 'sign'>('contracts');
@@ -43,6 +46,7 @@ export default function SessionPage() {
         setClauses(data.clauses || []);
         setMessages(data.messages || []);
         setSignatures(data.signatures || []);
+        setProposals(data.proposals || []);
       } catch (err) {
         console.error(err);
       } finally {
@@ -134,6 +138,54 @@ export default function SessionPage() {
       setChatText('');
     } catch (err) {
       alert('메시지 전송에 실패했습니다.');
+    }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve((reader.result as string).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleProposalFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      alert('PDF 파일만 수정안으로 보낼 수 있어요.');
+      return;
+    }
+    setUploadingProposal(true);
+    try {
+      const fileBase64 = await fileToBase64(file);
+      const res = await fetch(`/api/session/${id}/proposal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role, fileBase64, filename: file.name }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || '수정안 분석 실패');
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '수정안 전송에 실패했습니다.');
+    } finally {
+      setUploadingProposal(false);
+    }
+  };
+
+  const handleAcceptProposal = async (proposalId: string) => {
+    try {
+      const res = await fetch(`/api/session/${id}/proposal/${proposalId}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role }),
+      });
+      if (!res.ok) throw new Error('동의 처리 실패');
+    } catch {
+      alert('동의 처리 중 오류가 발생했습니다.');
     }
   };
 
@@ -597,6 +649,50 @@ export default function SessionPage() {
                    {messages.map((msg) => {
                      const isMe = msg.sender_role === role;
                      const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '방금 전';
+                     const proposal = msg.proposal_id ? proposals.find((p) => p.id === msg.proposal_id) : null;
+
+                     if (proposal) {
+                       const iAccepted = role === 'tenant' ? proposal.accepted_by_tenant : proposal.accepted_by_landlord;
+                       const otherAccepted = role === 'tenant' ? proposal.accepted_by_landlord : proposal.accepted_by_tenant;
+                       return (
+                         <div key={msg.id} className="flex flex-col items-stretch">
+                           <div className="bg-white border-2 border-[#6542F1] rounded-[20px] p-5 mx-1 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+                             <div className="flex items-center gap-3 mb-3">
+                               <div className="w-[40px] h-[40px] bg-[#F4F1FF] rounded-xl flex items-center justify-center shrink-0">
+                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                               </div>
+                               <div>
+                                 <h4 className="text-[15px] font-extrabold text-gray-900">{proposal.filename || '수정안.pdf'}</h4>
+                                 <p className="text-[12px] font-bold text-[#6542F1]">{proposal.changes.length}개 조항 수정 제안</p>
+                               </div>
+                             </div>
+
+                             <div className="space-y-2 mb-3">
+                               {proposal.changes.map((c: any, i: number) => (
+                                 <div key={i} className="bg-[#F9FAFC] rounded-[12px] p-3">
+                                   <p className="text-[12px] text-gray-400 line-through mb-1">{c.old_text}</p>
+                                   <p className="text-[13px] text-gray-900 font-semibold">{c.new_text}</p>
+                                 </div>
+                               ))}
+                             </div>
+
+                             {proposal.status === 'accepted' ? (
+                               <div className="text-center py-2 text-[13px] font-bold text-[#059669]">✓ 양쪽 합의 완료 · 반영됨</div>
+                             ) : iAccepted ? (
+                               <div className="text-center py-2 text-[13px] font-bold text-gray-500">
+                                 {otherAccepted ? '상대방 응답 반영 중...' : '동의함 · 상대방 동의 대기 중'}
+                               </div>
+                             ) : (
+                               <button onClick={() => handleAcceptProposal(proposal.id)} className="w-full py-3 bg-[#6542F1] text-white text-[14px] font-bold rounded-[14px]">
+                                 이 수정안에 동의하기
+                               </button>
+                             )}
+                           </div>
+                           <span className={`text-[10px] font-bold text-gray-400 mt-1.5 px-2 ${isMe ? 'text-right' : 'text-left'}`}>{timeStr}</span>
+                         </div>
+                       );
+                     }
+
                      return (
                        <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
                          <div className={`px-5 py-3.5 rounded-[20px] max-w-[85%] text-[15px] font-medium leading-relaxed shadow-[0_2px_8px_rgba(0,0,0,0.02)] ${
@@ -613,6 +709,18 @@ export default function SessionPage() {
                        </div>
                      );
                    })}
+                   {uploadingProposal && (
+                     <div className="flex flex-col items-start mb-4">
+                       <div className="px-5 py-4 rounded-[20px] bg-white border border-gray-100 text-gray-900 rounded-tl-[6px] shadow-sm flex items-center gap-3">
+                         <div className="flex gap-1.5 items-center">
+                            <span className="w-2 h-2 bg-[#6542F1] rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                            <span className="w-2 h-2 bg-[#6542F1] rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                            <span className="w-2 h-2 bg-[#6542F1] rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                         </div>
+                         <span className="text-[14px] font-bold text-gray-500">수정안 PDF를 분석하고 있어요...</span>
+                       </div>
+                     </div>
+                   )}
                    {coachLoading && (
                      <div className="flex flex-col items-start mb-4">
                        <div className="px-5 py-4 rounded-[20px] bg-white border border-gray-100 text-gray-900 rounded-tl-[6px] shadow-sm flex items-center gap-3">
@@ -637,9 +745,10 @@ export default function SessionPage() {
                          placeholder="" 
                          className="w-full h-[180px] bg-white border-[2.5px] border-[#6542F1] rounded-[24px] p-5 pb-14 text-[15px] font-medium text-gray-900 placeholder:text-gray-400 resize-none focus:outline-none shadow-sm"
                       />
-                      <button type="button" className="absolute left-4 bottom-4 w-10 h-10 flex items-center justify-center">
+                      <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingProposal} title="수정된 계약서 PDF 보내기" className="absolute left-4 bottom-4 w-10 h-10 flex items-center justify-center">
                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4B5563" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                       </button>
+                      <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleProposalFileSelect} />
                       <button type="submit" className="absolute right-4 bottom-4 w-10 h-10 bg-[#6542F1] text-white rounded-full flex items-center justify-center shadow-md">
                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                       </button>
