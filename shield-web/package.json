@@ -11,9 +11,11 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.121.0",
     "@aws-sdk/client-s3": "^3.1120.0",
+    "@google/genai": "^2.19.0",
     "@supabase/supabase-js": "^2.112.4",
     "next": "16.3.3",
     "pdf-parse": "^1.1.1",
+    "pdfjs-dist": "^6.2.108",
     "playwright": "^1.62.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
