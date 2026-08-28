@@ -1,76 +1,20 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { supabaseBrowser } from '@/lib/supabaseClient';
-
-type SessionRow = {
-  id: string;
-  status: string;
-  created_at: string;
-};
-
-const STATUS_LABEL: Record<string, { text: string; bg: string; color: string }> = {
-  analyzing: { text: '분석 중', bg: '#EAF2FF', color: '#2563EB' },
-  negotiating: { text: '협의 중', bg: '#F4F1FF', color: '#7C3AED' },
-  ready_to_sign: { text: '서명 대기', bg: '#FFF7E6', color: '#B45309' },
-  completed: { text: '계약 완료', bg: '#F4F1FF', color: '#6542F1' },
-};
 
 export default function Home() {
-  const [email, setEmail] = useState<string | null>(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
-  const [sessions, setSessions] = useState<SessionRow[] | null>(null);
-
-  useEffect(() => {
-    supabaseBrowser.auth.getSession().then(async ({ data: { session } }) => {
-      setEmail(session?.user.email ?? null);
-      setCheckingAuth(false);
-
-      if (session?.access_token) {
-        const res = await fetch('/api/my-sessions', {
-          headers: { authorization: `Bearer ${session.access_token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setSessions(data.sessions ?? []);
-        }
-      }
-    });
-  }, []);
-
-  const handleLogout = async () => {
-    await supabaseBrowser.auth.signOut();
-    setEmail(null);
-    setSessions(null);
-  };
-
-  const inProgress = sessions?.filter((s) => s.status !== 'completed') ?? [];
-  const completed = sessions?.filter((s) => s.status === 'completed') ?? [];
-
   return (
     <div className="min-h-screen bg-[#F9FAFC] flex justify-center">
       <main className="w-full max-w-md bg-[#F9FAFC] text-gray-900 flex flex-col relative pb-10 shadow-sm min-h-screen">
         {/* Header */}
         <header className="flex items-center justify-between px-6 pt-10 pb-4">
           <h1 className="text-[26px] font-extrabold tracking-tight" style={{ color: '#6542F1' }}>SIGNAL</h1>
-          {!checkingAuth && (
-            email ? (
-              <button
-                onClick={handleLogout}
-                className="text-[13px] font-bold text-gray-500 hover:text-gray-700"
-              >
-                로그아웃
-              </button>
-            ) : (
-              <Link
-                href="/login"
-                className="text-[13px] font-bold"
-                style={{ color: '#6542F1' }}
-              >
-                로그인
-              </Link>
-            )
-          )}
+          <button className="p-2 -mr-2 text-gray-700 hover:text-gray-900 transition-colors">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+          </button>
         </header>
 
         <div className="px-6 border-b border-gray-200/60 mx-6 mb-8"></div>
@@ -78,10 +22,10 @@ export default function Home() {
         {/* Greeting */}
         <section className="px-6 mb-8">
           <h2 className="text-[24px] font-bold leading-snug mb-2 text-gray-900 tracking-tight">
-            {email ? `안녕하세요, ${email.split('@')[0]}님!` : '안녕하세요!'}
+            안녕하세요, 박지민님!
           </h2>
           <p className="text-[16px] text-gray-500 font-medium">
-            {email ? '계약을 안전하게 관리하세요.' : '로그인하면 내 계약을 저장하고 관리할 수 있어요.'}
+            계약을 안전하게 관리하세요.
           </p>
         </section>
 
@@ -105,120 +49,107 @@ export default function Home() {
           </Link>
         </section>
 
-        {!email ? (
-          <section className="px-6">
-            <div className="rounded-[20px] border border-dashed border-gray-300 bg-white p-6 text-center">
-              <p className="text-[14px] font-medium text-gray-500">
-                로그인하면 여기에 내 계약 목록이 표시돼요.
-              </p>
-              <Link
-                href="/login"
-                className="mt-3 inline-block text-[14px] font-bold"
-                style={{ color: '#6542F1' }}
-              >
-                로그인하러 가기
-              </Link>
+        {/* In Progress Contracts */}
+        <section className="px-6 mb-10">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[18px] font-bold text-gray-900 tracking-tight">진행 중 계약</h3>
+            <span className="px-3.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-full">
+              2건
+            </span>
+          </div>
+          
+          <div className="flex flex-col gap-3.5">
+            {/* Card 1 */}
+            <div className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors">
+              <div className="flex items-center gap-4">
+                <div className="w-[52px] h-[52px] bg-[#EEF2F6] rounded-[16px] flex items-center justify-center text-[#9CA3AF]">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7A8B9C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-[17px] font-bold text-gray-900 mb-1">신촌 원룸</h4>
+                  <p className="text-[14px] text-gray-500 mb-2 font-medium">OO공인중개사</p>
+                  <span className="inline-block px-2.5 py-1 bg-[#EAF2FF] text-[#2563EB] text-[12px] font-bold rounded-md">
+                    검토 진행 중
+                  </span>
+                </div>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1C7D0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
             </div>
-          </section>
-        ) : (
-          <>
-            {/* In Progress Contracts */}
-            <section className="px-6 mb-10">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[18px] font-bold text-gray-900 tracking-tight">진행 중 계약</h3>
-                <span className="px-3.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-full">
-                  {inProgress.length}건
-                </span>
-              </div>
 
-              {inProgress.length === 0 ? (
-                <p className="text-[14px] text-gray-400 font-medium">진행 중인 계약이 없어요.</p>
-              ) : (
-                <div className="flex flex-col gap-3.5">
-                  {inProgress.map((s) => {
-                    const label = STATUS_LABEL[s.status] ?? STATUS_LABEL.negotiating;
-                    return (
-                      <Link
-                        key={s.id}
-                        href={`/session/${s.id}`}
-                        className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="w-[52px] h-[52px] bg-[#EEF2F6] rounded-[16px] flex items-center justify-center text-[#9CA3AF]">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7A8B9C" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                              <polyline points="14 2 14 8 20 8"></polyline>
-                            </svg>
-                          </div>
-                          <div>
-                            <h4 className="text-[17px] font-bold text-gray-900 mb-1">
-                              계약 #{s.id.slice(0, 8)}
-                            </h4>
-                            <span
-                              className="inline-block px-2.5 py-1 text-[12px] font-bold rounded-md"
-                              style={{ background: label.bg, color: label.color }}
-                            >
-                              {label.text}
-                            </span>
-                          </div>
-                        </div>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1C7D0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="9 18 15 12 9 6"></polyline>
-                        </svg>
-                      </Link>
-                    );
-                  })}
+            {/* Card 2 */}
+            <div className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors">
+              <div className="flex items-center gap-4">
+                <div className="w-[52px] h-[52px] bg-[#F4F1FF] rounded-[16px] flex items-center justify-center">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                    <polyline points="10 9 9 9 8 9"></polyline>
+                  </svg>
                 </div>
-              )}
-            </section>
-
-            {/* Completed Contracts */}
-            <section className="px-6 mb-8">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[18px] font-bold text-gray-900 tracking-tight">완료된 계약</h3>
-                <span className="px-3.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-full">
-                  {completed.length}건
-                </span>
-              </div>
-
-              {completed.length === 0 ? (
-                <p className="text-[14px] text-gray-400 font-medium">완료된 계약이 없어요.</p>
-              ) : (
-                <div className="flex flex-col gap-3.5">
-                  {completed.map((s) => (
-                    <Link
-                      key={s.id}
-                      href={`/session/${s.id}`}
-                      className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-[52px] h-[52px] bg-[#E1F0FF] rounded-[16px] flex items-center justify-center">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path>
-                          </svg>
-                        </div>
-                        <div>
-                          <h4 className="text-[17px] font-bold text-gray-900 mb-1">
-                            계약 #{s.id.slice(0, 8)}
-                          </h4>
-                          <p className="text-[14px] text-gray-500 mb-2 font-medium">
-                            {new Date(s.created_at).toLocaleDateString('ko-KR')}
-                          </p>
-                          <span className="inline-block px-2.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[12px] font-bold rounded-md">
-                            계약 완료
-                          </span>
-                        </div>
-                      </div>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1C7D0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="9 18 15 12 9 6"></polyline>
-                      </svg>
-                    </Link>
-                  ))}
+                <div>
+                  <h4 className="text-[17px] font-bold text-gray-900 mb-1">마포 오피스텔</h4>
+                  <p className="text-[14px] text-gray-500 mb-2 font-medium">OO부동산</p>
+                  <span className="inline-block px-2.5 py-1 bg-[#F4F1FF] text-[#7C3AED] text-[12px] font-bold rounded-md">
+                    협의 중
+                  </span>
                 </div>
-              )}
-            </section>
-          </>
-        )}
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1C7D0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+          </div>
+        </section>
+
+        {/* Completed Contracts */}
+        <section className="px-6 mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[18px] font-bold text-gray-900 tracking-tight">완료된 계약</h3>
+            <span className="px-3.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-full">
+              1건
+            </span>
+          </div>
+          
+          <div className="flex flex-col gap-3.5">
+            {/* Card 3 */}
+            <div className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors">
+              <div className="flex items-center gap-4">
+                <div className="w-[52px] h-[52px] bg-[#E1F0FF] rounded-[16px] flex items-center justify-center">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0284C7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 21h18"></path>
+                    <path d="M9 8h1"></path>
+                    <path d="M9 12h1"></path>
+                    <path d="M9 16h1"></path>
+                    <path d="M14 8h1"></path>
+                    <path d="M14 12h1"></path>
+                    <path d="M14 16h1"></path>
+                    <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path>
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="text-[17px] font-bold text-gray-900 mb-1">강남 투룸</h4>
+                  <p className="text-[14px] text-gray-500 mb-2 font-medium">2024.04.10</p>
+                  <span className="inline-block px-2.5 py-1 bg-[#F4F1FF] text-[#6542F1] text-[12px] font-bold rounded-md">
+                    계약 완료
+                  </span>
+                </div>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C1C7D0" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
   );
