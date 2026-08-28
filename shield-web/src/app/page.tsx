@@ -39,31 +39,43 @@ export default function Home() {
 
   useEffect(() => {
     const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setUser(session.user);
-        await fetchMySessions(session.access_token);
-        setLoading(false);
-      } else {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
+        const session = data.session;
+        if (session) {
+          setUser(session.user);
+          await fetchMySessions(session.access_token);
+        } else {
+          setUser(null);
+          setSessions([]);
+          router.push('/login');
+        }
+      } catch (err) {
+        console.error('Auth initialization error:', err);
         setUser(null);
         setSessions([]);
-        setLoading(false);
         router.push('/login');
+      } finally {
+        setLoading(false);
       }
     };
 
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        setUser(session.user);
-        await fetchMySessions(session.access_token);
+      try {
+        if (session) {
+          setUser(session.user);
+          await fetchMySessions(session.access_token);
+        } else {
+          setUser(null);
+          setSessions([]);
+          router.push('/login');
+        }
+      } finally {
         setLoading(false);
-      } else {
-        setUser(null);
-        setSessions([]);
-        setLoading(false);
-        router.push('/login');
       }
     });
 
