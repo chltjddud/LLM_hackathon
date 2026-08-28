@@ -67,17 +67,31 @@ export default function SessionPage() {
 
   const handleResolveClause = async (clauseId: string, currentResolved: boolean) => {
     const updatedStatus = !currentResolved;
-    // Optimistic update
-    setClauses(prev => prev.map(c => 
+    
+    // Calculate new clauses list to see if everything is resolved
+    const nextClauses = clauses.map(c => 
       c.id === clauseId 
         ? { ...c, [role === 'tenant' ? 'resolved_by_tenant' : 'resolved_by_landlord']: updatedStatus } 
         : c
-    ));
+    );
+    
+    // Optimistic update
+    setClauses(nextClauses);
     if (selectedClause?.id === clauseId) {
       setSelectedClause((prev: any) => ({
         ...prev,
         [role === 'tenant' ? 'resolved_by_tenant' : 'resolved_by_landlord']: updatedStatus
       }));
+    }
+
+    // Check if this action makes unresolvedCriticalCount === 0
+    const newUnresolvedCount = nextClauses.filter(c => (c.risk_level === '위험' || c.risk_level === '주의') && (!c.resolved_by_tenant || !c.resolved_by_landlord)).length;
+    
+    // Auto-open popup if all are resolved (and not already signed)
+    const hasSignedStatus = signatures.some(s => s.role === role);
+    if (newUnresolvedCount === 0 && !hasSignedStatus) {
+       setSelectedClause(null); // Close the detail view
+       setShowChangesPopup(true); // Auto-open the popup
     }
 
     try {
@@ -785,14 +799,40 @@ export default function SessionPage() {
                        </p>
                     </div>
                     
-                    <div className="space-y-3">
-                       {clauses.filter(c => c.resolved_by_tenant && c.resolved_by_landlord).map((clause, idx) => (
-                          <div key={clause.id} className="bg-white p-5 rounded-[20px] border border-gray-200 shadow-sm relative overflow-hidden">
-                             <div className="absolute top-0 left-0 w-1 h-full bg-[#6542F1]"></div>
-                             <h4 className="text-[14px] font-bold text-gray-900 mb-2">{clause.category || `추가 조항 ${idx + 1}`}</h4>
-                             <p className="text-[14px] text-gray-600 font-medium leading-relaxed">{clause.explanation || clause.clause_text}</p>
-                          </div>
-                       ))}
+                    <div className="space-y-4">
+                       {clauses.filter(c => c.resolved_by_tenant && c.resolved_by_landlord).map((clause, idx) => {
+                          const isMissing = clause.category?.includes('누락') || clause.clause_text?.includes('없음');
+                          return (
+                            <div key={clause.id} className="bg-white p-5 rounded-[20px] border border-gray-200 shadow-sm relative overflow-hidden">
+                               <div className={`absolute top-0 left-0 w-1 h-full ${isMissing ? 'bg-[#10B981]' : 'bg-[#6542F1]'}`}></div>
+                               <h4 className="text-[14px] font-bold text-gray-900 mb-3">{clause.category || `추가 조항 ${idx + 1}`}</h4>
+                               
+                               {isMissing ? (
+                                  <div className="bg-[#ECFDF5] p-3 rounded-[12px]">
+                                     <p className="text-[12px] font-bold text-[#059669] mb-1 flex items-center gap-1">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                                        새롭게 추가된 특약
+                                     </p>
+                                     <p className="text-[13px] text-gray-800 font-medium leading-relaxed">{clause.explanation || clause.clause_text}</p>
+                                  </div>
+                               ) : (
+                                  <div className="space-y-2">
+                                     <div className="bg-gray-50 p-3 rounded-[12px] opacity-70 line-through">
+                                        <p className="text-[12px] font-bold text-gray-500 mb-1">기존 원본 내용</p>
+                                        <p className="text-[13px] text-gray-500 leading-relaxed">{clause.clause_text || '내용 없음'}</p>
+                                     </div>
+                                     <div className="bg-[#F4F1FF] p-3 rounded-[12px]">
+                                        <p className="text-[12px] font-bold text-[#6542F1] mb-1 flex items-center gap-1">
+                                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                           변경(합의)된 특약
+                                        </p>
+                                        <p className="text-[13px] text-gray-800 font-medium leading-relaxed">{clause.explanation || '내용 없음'}</p>
+                                     </div>
+                                  </div>
+                               )}
+                            </div>
+                          );
+                       })}
                        {clauses.filter(c => c.resolved_by_tenant && c.resolved_by_landlord).length === 0 && (
                           <div className="text-center py-8">
                              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">

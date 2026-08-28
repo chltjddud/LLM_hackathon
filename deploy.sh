@@ -6,6 +6,8 @@ sudo apt-get install -y nodejs
 rm -rf shield-web
 unzip shield-web.zip
 cd shield-web
+cp /home/ubuntu/.env.local .env.local 2>/dev/null || true
+cp /home/ubuntu/.env .env 2>/dev/null || true
 npm install
 npm run build
 sudo fuser -k 8501/tcp || true

@@ -10,6 +10,8 @@ def zipdir(path, ziph):
         if '.git' in dirs:
             dirs.remove('.git')
         for file in files:
+            if file.endswith('.env') or file.endswith('.env.local') or file.endswith('.pem') or file.endswith('.key') or file == '.env.local':
+                continue
             ziph.write(os.path.join(root, file),
                        os.path.relpath(os.path.join(root, file),
                                        os.path.join(path, '..')))

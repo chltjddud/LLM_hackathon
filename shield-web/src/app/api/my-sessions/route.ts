@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
 
   const { data: sessions, error } = await supabase
     .from("sessions")
-    .select()
+    .select("id, status, filename, file_size, tenant_user_id, landlord_user_id, created_at")
     .or(`tenant_user_id.eq.${user.id},landlord_user_id.eq.${user.id}`)
     .order("created_at", { ascending: false });
 
