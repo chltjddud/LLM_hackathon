@@ -35,6 +35,17 @@ export default function SessionPage() {
   const [submittingSignature, setSubmittingSignature] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  type CanvasRef = React.RefObject<HTMLCanvasElement | null>;
+
+  // 데스크탑/모바일은 조건부 렌더링으로 완전히 분리한다(둘 다 동시에 DOM에 마운트되지 않게).
+  // CSS로만 숨기면 캔버스 등 ref를 쓰는 요소가 두 벌 마운트돼서 충돌하기 때문.
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const check = () => setIsDesktop(window.innerWidth >= 1024);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -224,8 +235,8 @@ export default function SessionPage() {
     setActiveTab('chat');
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
+  const startDrawing = (ref: CanvasRef) => (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -246,9 +257,9 @@ export default function SessionPage() {
     setIsDrawing(true);
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  const draw = (ref: CanvasRef) => (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
-    const canvas = canvasRef.current;
+    const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -268,16 +279,16 @@ export default function SessionPage() {
   };
 
   const stopDrawing = () => setIsDrawing(false);
-  const clearCanvas = () => {
-    const canvas = canvasRef.current;
+  const clearCanvas = (ref: CanvasRef) => () => {
+    const canvas = ref.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   };
 
-  const handleSubmitSignature = async () => {
-    const canvas = canvasRef.current;
+  const handleSubmitSignature = (ref: CanvasRef) => async () => {
+    const canvas = ref.current;
     if (!canvas) return;
     const buffer = new Uint32Array(canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data.buffer);
     if (!buffer.some(color => color !== 0)) {
@@ -293,7 +304,7 @@ export default function SessionPage() {
         body: JSON.stringify({ role, signature_image: signatureImage })
       });
       if (!res.ok) throw new Error('서명 제출 실패');
-      clearCanvas();
+      clearCanvas(ref)();
     } catch (err) {
       alert('서명 등록 중 오류가 발생했습니다.');
     } finally {
@@ -306,10 +317,246 @@ export default function SessionPage() {
     navigator.clipboard.writeText(link).then(() => alert('상대방에게 공유할 협상 링크가 복사되었습니다!'));
   };
 
+  // 채팅 메시지 하나(일반 메시지 또는 수정안 제안 카드)를 렌더링. 모바일/데스크탑 공용.
+  const renderChatItem = (msg: any) => {
+    const isMe = msg.sender_role === role;
+    const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '방금 전';
+    const proposal = msg.proposal_id ? proposals.find((p) => p.id === msg.proposal_id) : null;
+
+    if (proposal) {
+      const iAccepted = role === 'tenant' ? proposal.accepted_by_tenant : proposal.accepted_by_landlord;
+      const otherAccepted = role === 'tenant' ? proposal.accepted_by_landlord : proposal.accepted_by_tenant;
+      return (
+        <div key={msg.id} className="flex flex-col items-stretch">
+          <div className="bg-white border-2 border-[#6542F1] rounded-[20px] p-5 mx-1 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-[40px] h-[40px] bg-[#F4F1FF] rounded-xl flex items-center justify-center shrink-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+              </div>
+              <div>
+                <h4 className="text-[15px] font-extrabold text-gray-900">{proposal.filename || '수정안.pdf'}</h4>
+                <p className="text-[12px] font-bold text-[#6542F1]">{proposal.changes.length}개 조항 수정 제안</p>
+              </div>
+            </div>
+            <div className="space-y-2 mb-3">
+              {proposal.changes.map((c: any, i: number) => (
+                <div key={i} className="bg-[#F9FAFC] rounded-[12px] p-3">
+                  <p className="text-[12px] text-gray-400 line-through mb-1">{c.old_text}</p>
+                  <p className="text-[13px] text-gray-900 font-semibold">{c.new_text}</p>
+                </div>
+              ))}
+            </div>
+            {proposal.status === 'accepted' ? (
+              <div className="text-center py-2 text-[13px] font-bold text-[#059669]">✓ 양쪽 합의 완료 · 반영됨</div>
+            ) : iAccepted ? (
+              <div className="text-center py-2 text-[13px] font-bold text-gray-500">
+                {otherAccepted ? '상대방 응답 반영 중...' : '동의함 · 상대방 동의 대기 중'}
+              </div>
+            ) : (
+              <button onClick={() => handleAcceptProposal(proposal.id)} className="w-full py-3 bg-[#6542F1] text-white text-[14px] font-bold rounded-[14px]">
+                이 수정안에 동의하기
+              </button>
+            )}
+          </div>
+          <span className={`text-[10px] font-bold text-gray-400 mt-1.5 px-2 ${isMe ? 'text-right' : 'text-left'}`}>{timeStr}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+        <div className={`px-5 py-3.5 rounded-[20px] max-w-[85%] text-[15px] font-medium leading-relaxed shadow-[0_2px_8px_rgba(0,0,0,0.02)] ${
+          isMe ? 'bg-[#6542F1] text-white rounded-tr-[6px]' : 'bg-white border border-gray-200 text-gray-900 rounded-tl-[6px]'
+        }`}>
+          {msg.text}
+        </div>
+        <span className={`text-[10px] font-bold text-gray-400 mt-1.5 px-2 flex items-center gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
+          {timeStr}
+        </span>
+      </div>
+    );
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#F9FAFC] flex flex-col items-center justify-center max-w-md mx-auto">
         <div className="w-12 h-12 border-4 border-gray-200 border-t-[#6542F1] rounded-full animate-spin mb-4"></div>
+      </div>
+    );
+  }
+
+  if (isDesktop) {
+    const dRiskClauses = clauses.filter(c => c.risk_level === '위험');
+    const dWarningClauses = clauses.filter(c => c.risk_level === '주의');
+    const dScore = Math.max(0, 100 - (dRiskClauses.length * 10) - (dWarningClauses.length * 4));
+    const dHasSigned = signatures.some(s => s.role === role);
+    const dOtherSigned = signatures.some(s => s.role !== role);
+
+    if (session?.status === 'analyzing') {
+      return (
+        <div className="min-h-screen bg-[#F9FAFC] flex flex-col items-center justify-center">
+          <div className="w-[42px] h-[42px] border-[3px] border-[#F4F1FF] border-t-[#D4C8F6] rounded-full animate-spin mb-6"></div>
+          <h3 className="text-[19px] font-bold text-gray-900 mb-2">계약서 분석 중</h3>
+          <p className="text-[14px] text-gray-500">법령·판례를 기준으로 위험 조항을 확인하고 있어요.</p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-screen bg-[#F9FAFC]">
+        <header className="flex items-center justify-between px-8 py-5 bg-white border-b border-gray-100">
+          <Link href="/" className="text-[24px] font-extrabold tracking-tight" style={{ color: '#6542F1' }}>SIGNAL</Link>
+          <div className="flex items-center gap-3">
+            <span className="text-[13px] font-bold text-gray-500 px-3 py-1.5 bg-gray-100 rounded-full">
+              {role === 'tenant' ? '세입자로 보는 중' : '집주인으로 보는 중'}
+            </span>
+            <button onClick={copyShareLink} className="px-4 py-2 bg-[#F4F1FF] text-[#6542F1] text-[13px] font-bold rounded-xl hover:bg-[#EDE9FE] transition-colors">
+              상대방 초대 링크 복사
+            </button>
+          </div>
+        </header>
+
+        <div className="max-w-[1440px] mx-auto grid grid-cols-[360px_1fr_340px] gap-6 px-8 py-8" style={{ height: 'calc(100vh - 89px)' }}>
+          {/* 왼쪽: 위험 조항 목록 */}
+          <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm flex flex-col overflow-hidden">
+            <div className="p-6 border-b border-gray-100">
+              <div className="flex items-baseline gap-2 mb-1">
+                <span className="text-[36px] font-black text-[#4F46E5] leading-none">{dScore}</span>
+                <span className="text-[16px] font-bold text-gray-400">/100</span>
+              </div>
+              <p className="text-[13px] text-gray-500 font-medium">종합 위험 점수 · 위험 {dRiskClauses.length} · 주의 {dWarningClauses.length}</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
+              {[...dRiskClauses, ...dWarningClauses].map((clause) => (
+                <div
+                  key={clause.id}
+                  onClick={() => setSelectedClause(selectedClause?.id === clause.id ? null : clause)}
+                  className={`rounded-[16px] border p-4 cursor-pointer transition-all ${selectedClause?.id === clause.id ? 'border-[#6542F1] bg-[#FAFAFF]' : 'border-gray-200 hover:border-gray-300'}`}
+                >
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${clause.risk_level === '위험' ? 'bg-[#EF4444]' : 'bg-[#F97316]'}`}></span>
+                    <span className="text-[13px] font-bold text-gray-900">{clause.category || '조항'}</span>
+                  </div>
+                  <p className="text-[12px] text-gray-500 line-clamp-2 mb-2">{clause.explanation}</p>
+                  <div className="flex gap-2">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${(role === 'tenant' ? clause.resolved_by_tenant : clause.resolved_by_landlord) ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>내 동의 {(role === 'tenant' ? clause.resolved_by_tenant : clause.resolved_by_landlord) ? '✓' : '·'}</span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${(role === 'tenant' ? clause.resolved_by_landlord : clause.resolved_by_tenant) ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-400'}`}>상대 동의 {(role === 'tenant' ? clause.resolved_by_landlord : clause.resolved_by_tenant) ? '✓' : '·'}</span>
+                  </div>
+
+                  {selectedClause?.id === clause.id && (
+                    <div className="mt-3 pt-3 border-t border-gray-200" onClick={(e) => e.stopPropagation()}>
+                      <p className="text-[12px] text-gray-600 mb-2">{clause.clause_text}</p>
+                      {clause.law_basis && <p className="text-[11px] font-bold text-[#4F46E5] mb-3">⚖️ {clause.law_basis}</p>}
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleResolveClause(clause.id, role === 'tenant' ? clause.resolved_by_tenant : clause.resolved_by_landlord)}
+                          className={`flex-1 py-2 text-[12px] font-bold rounded-[10px] ${(role === 'tenant' ? clause.resolved_by_tenant : clause.resolved_by_landlord) ? 'bg-gray-200 text-gray-700' : 'bg-gray-900 text-white'}`}
+                        >
+                          {(role === 'tenant' ? clause.resolved_by_tenant : clause.resolved_by_landlord) ? '동의 취소' : '동의하기'}
+                        </button>
+                        <button
+                          onClick={() => handleFetchCoach(clause.category, clause.explanation)}
+                          className="flex-1 py-2 bg-[#4F46E5] text-white text-[12px] font-bold rounded-[10px]"
+                        >
+                          협상 문구 제안받기
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+              {dRiskClauses.length === 0 && dWarningClauses.length === 0 && (
+                <p className="text-center text-gray-400 text-sm py-8">위험 조항이 없습니다.</p>
+              )}
+            </div>
+          </div>
+
+          {/* 가운데: 채팅 */}
+          <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm flex flex-col overflow-hidden">
+            <div className="px-6 py-4 border-b border-gray-100">
+              <h3 className="text-[15px] font-bold text-gray-900">{role === 'tenant' ? '임대인과 협상' : '임차인과 협상'}</h3>
+            </div>
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {messages.map(renderChatItem)}
+              {uploadingProposal && (
+                <p className="text-[13px] font-bold text-gray-400">수정안 PDF를 분석하고 있어요...</p>
+              )}
+              {coachLoading && <p className="text-[13px] font-bold text-gray-400">AI가 협상 메시지를 작성하고 있어요...</p>}
+              <div ref={chatEndRef} />
+            </div>
+            <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 flex items-end gap-2">
+              <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingProposal} title="수정된 계약서 PDF 보내기" className="p-3 text-gray-500 hover:text-[#6542F1] shrink-0">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              </button>
+              <input ref={fileInputRef} type="file" accept="application/pdf" className="hidden" onChange={handleProposalFileSelect} />
+              <textarea
+                value={chatText}
+                onChange={(e) => setChatText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(e as any); } }}
+                placeholder="메시지를 입력하세요"
+                className="flex-1 border border-gray-200 rounded-2xl px-4 py-3 text-[14px] resize-none h-[52px] focus:outline-none focus:border-[#6542F1]"
+              />
+              <button type="submit" className="p-3 bg-[#6542F1] text-white rounded-full shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+              </button>
+            </form>
+          </div>
+
+          {/* 오른쪽: 전자서명 */}
+          <div className="bg-white rounded-[24px] border border-gray-100 shadow-sm flex flex-col overflow-hidden p-6">
+            <h3 className="text-[15px] font-bold text-gray-900 mb-4">전자서명</h3>
+
+            <div className="bg-white border border-gray-200 rounded-[16px] overflow-hidden mb-5">
+              <div className="flex items-center justify-between p-3.5 border-b border-gray-100">
+                <span className="text-[13px] font-bold text-gray-800">세입자</span>
+                <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md ${signatures.some(s => s.role === 'tenant') ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FFEDD5] text-[#9A3412]'}`}>
+                  {signatures.some(s => s.role === 'tenant') ? '서명완료' : '서명대기'}
+                </span>
+              </div>
+              <div className="flex items-center justify-between p-3.5">
+                <span className="text-[13px] font-bold text-gray-800">집주인</span>
+                <span className={`px-2.5 py-1 text-[11px] font-bold rounded-md ${signatures.some(s => s.role === 'landlord') ? 'bg-[#DCFCE7] text-[#166534]' : 'bg-[#FFEDD5] text-[#9A3412]'}`}>
+                  {signatures.some(s => s.role === 'landlord') ? '서명완료' : '서명대기'}
+                </span>
+              </div>
+            </div>
+
+            {session?.status !== 'ready_to_sign' && session?.status !== 'completed' ? (
+              <p className="text-[13px] text-gray-400 text-center py-6">위험/주의 조항에 모두 합의하면<br />서명을 진행할 수 있어요.</p>
+            ) : dHasSigned ? (
+              <div className="text-center py-6">
+                <p className="text-[13px] font-bold text-emerald-600 mb-1">✓ 서명 완료</p>
+                <p className="text-[12px] text-gray-400">{dOtherSigned ? '계약이 완료됐어요.' : '상대방 서명을 기다리는 중...'}</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-[12px] font-bold text-gray-500 mb-2">내 서명</p>
+                <div className="bg-[#F9FAFC] border border-gray-200 rounded-[16px] p-2 mb-3">
+                  <canvas
+                    ref={canvasRef}
+                    width={296}
+                    height={120}
+                    onMouseDown={startDrawing(canvasRef)}
+                    onMouseMove={draw(canvasRef)}
+                    onMouseUp={stopDrawing}
+                    onMouseLeave={stopDrawing}
+                    className="w-full bg-white rounded-xl cursor-crosshair border border-gray-100"
+                  />
+                  <button onClick={clearCanvas(canvasRef)} className="w-full text-center text-[12px] font-bold text-gray-400 py-2 hover:text-gray-600">
+                    서명 변경
+                  </button>
+                </div>
+                <button
+                  onClick={handleSubmitSignature(canvasRef)}
+                  disabled={submittingSignature}
+                  className="w-full py-3.5 bg-[#6542F1] hover:bg-[#5233c8] transition-colors text-white text-[14px] font-bold rounded-[16px] shadow-lg shadow-indigo-200"
+                >
+                  {submittingSignature ? '제출 중...' : '전자 서명 완료하기'}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
@@ -646,69 +893,7 @@ export default function SessionPage() {
                    </div>
 
                    {/* Messages */}
-                   {messages.map((msg) => {
-                     const isMe = msg.sender_role === role;
-                     const timeStr = msg.created_at ? new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' }) : '방금 전';
-                     const proposal = msg.proposal_id ? proposals.find((p) => p.id === msg.proposal_id) : null;
-
-                     if (proposal) {
-                       const iAccepted = role === 'tenant' ? proposal.accepted_by_tenant : proposal.accepted_by_landlord;
-                       const otherAccepted = role === 'tenant' ? proposal.accepted_by_landlord : proposal.accepted_by_tenant;
-                       return (
-                         <div key={msg.id} className="flex flex-col items-stretch">
-                           <div className="bg-white border-2 border-[#6542F1] rounded-[20px] p-5 mx-1 shadow-[0_2px_12px_rgba(0,0,0,0.04)]">
-                             <div className="flex items-center gap-3 mb-3">
-                               <div className="w-[40px] h-[40px] bg-[#F4F1FF] rounded-xl flex items-center justify-center shrink-0">
-                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
-                               </div>
-                               <div>
-                                 <h4 className="text-[15px] font-extrabold text-gray-900">{proposal.filename || '수정안.pdf'}</h4>
-                                 <p className="text-[12px] font-bold text-[#6542F1]">{proposal.changes.length}개 조항 수정 제안</p>
-                               </div>
-                             </div>
-
-                             <div className="space-y-2 mb-3">
-                               {proposal.changes.map((c: any, i: number) => (
-                                 <div key={i} className="bg-[#F9FAFC] rounded-[12px] p-3">
-                                   <p className="text-[12px] text-gray-400 line-through mb-1">{c.old_text}</p>
-                                   <p className="text-[13px] text-gray-900 font-semibold">{c.new_text}</p>
-                                 </div>
-                               ))}
-                             </div>
-
-                             {proposal.status === 'accepted' ? (
-                               <div className="text-center py-2 text-[13px] font-bold text-[#059669]">✓ 양쪽 합의 완료 · 반영됨</div>
-                             ) : iAccepted ? (
-                               <div className="text-center py-2 text-[13px] font-bold text-gray-500">
-                                 {otherAccepted ? '상대방 응답 반영 중...' : '동의함 · 상대방 동의 대기 중'}
-                               </div>
-                             ) : (
-                               <button onClick={() => handleAcceptProposal(proposal.id)} className="w-full py-3 bg-[#6542F1] text-white text-[14px] font-bold rounded-[14px]">
-                                 이 수정안에 동의하기
-                               </button>
-                             )}
-                           </div>
-                           <span className={`text-[10px] font-bold text-gray-400 mt-1.5 px-2 ${isMe ? 'text-right' : 'text-left'}`}>{timeStr}</span>
-                         </div>
-                       );
-                     }
-
-                     return (
-                       <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                         <div className={`px-5 py-3.5 rounded-[20px] max-w-[85%] text-[15px] font-medium leading-relaxed shadow-[0_2px_8px_rgba(0,0,0,0.02)] ${
-                           isMe ? 'bg-[#6542F1] text-white rounded-tr-[6px]' : 'bg-white border border-gray-200 text-gray-900 rounded-tl-[6px]'
-                         }`}>
-                           {msg.text}
-                         </div>
-                         <span className={`text-[10px] font-bold text-gray-400 mt-1.5 px-2 flex items-center gap-1 ${isMe ? 'justify-end' : 'justify-start'}`}>
-                            {timeStr}
-                            {isMe && msg.is_read && (
-                              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6542F1" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                            )}
-                         </span>
-                       </div>
-                     );
-                   })}
+                   {messages.map(renderChatItem)}
                    {uploadingProposal && (
                      <div className="flex flex-col items-start mb-4">
                        <div className="px-5 py-4 rounded-[20px] bg-white border border-gray-100 text-gray-900 rounded-tl-[6px] shadow-sm flex items-center gap-3">
@@ -843,16 +1028,16 @@ export default function SessionPage() {
                              ref={canvasRef}
                              width={320}
                              height={120}
-                             onMouseDown={startDrawing}
-                             onMouseMove={draw}
+                             onMouseDown={startDrawing(canvasRef)}
+                             onMouseMove={draw(canvasRef)}
                              onMouseUp={stopDrawing}
                              onMouseLeave={stopDrawing}
-                             onTouchStart={startDrawing}
-                             onTouchMove={draw}
+                             onTouchStart={startDrawing(canvasRef)}
+                             onTouchMove={draw(canvasRef)}
                              onTouchEnd={stopDrawing}
                              className="w-full bg-white rounded-xl cursor-crosshair border border-gray-100"
                           />
-                          <button onClick={clearCanvas} className="w-full text-center text-[13px] font-bold text-gray-400 py-3 mt-1 hover:text-gray-600 transition-colors">
+                          <button onClick={clearCanvas(canvasRef)} className="w-full text-center text-[13px] font-bold text-gray-400 py-3 mt-1 hover:text-gray-600 transition-colors">
                              서명 변경
                           </button>
                        </div>
@@ -860,7 +1045,7 @@ export default function SessionPage() {
 
                     <div className="pt-4 pb-2">
                       <p className="text-center text-[14px] font-bold text-gray-400 mb-4">서명 완료후 계약서가 자동 저장됩니다.</p>
-                      <button onClick={handleSubmitSignature} disabled={submittingSignature} className="w-full py-4 bg-[#6542F1] hover:bg-[#5233c8] transition-colors text-white text-[17px] font-bold rounded-[20px] shadow-lg shadow-indigo-200 flex items-center justify-center">
+                      <button onClick={handleSubmitSignature(canvasRef)} disabled={submittingSignature} className="w-full py-4 bg-[#6542F1] hover:bg-[#5233c8] transition-colors text-white text-[17px] font-bold rounded-[20px] shadow-lg shadow-indigo-200 flex items-center justify-center">
                          {submittingSignature ? '제출 중...' : '전자 서명 완료하기'}
                       </button>
                     </div>
