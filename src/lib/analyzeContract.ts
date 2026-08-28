@@ -1,7 +1,40 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
 import riskCriteria from "../../data/risk-criteria.json";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+// USE_BEDROCK=true 이면 EC2 인스턴스 프로파일로 Bedrock을 통해 Claude 호출(키 불필요).
+// 로컬 개발에서는 USE_BEDROCK을 안 쓰거나 false로 둬서 ANTHROPIC_API_KEY로 직접 호출.
+const USE_BEDROCK = process.env.USE_BEDROCK === "true";
+const BEDROCK_MODEL = "global.anthropic.claude-sonnet-5";
+const DIRECT_MODEL = "claude-sonnet-5";
+
+let cachedClient: Anthropic | AnthropicBedrock | null = null;
+
+// 리전을 하드코딩하면 배정된 리전 외에는 전부 AccessDenied가 나므로,
+// EC2 인스턴스 메타데이터에서 실제 배정된 리전을 읽어와야 한다.
+async function getEc2Region(): Promise<string> {
+  const tokenRes = await fetch("http://169.254.169.254/latest/api/token", {
+    method: "PUT",
+    headers: { "X-aws-ec2-metadata-token-ttl-seconds": "21600" },
+  });
+  const token = await tokenRes.text();
+  const regionRes = await fetch(
+    "http://169.254.169.254/latest/meta-data/placement/region",
+    { headers: { "X-aws-ec2-metadata-token": token } }
+  );
+  return (await regionRes.text()).trim();
+}
+
+async function getClient(): Promise<Anthropic | AnthropicBedrock> {
+  if (cachedClient) return cachedClient;
+  if (USE_BEDROCK) {
+    const region = await getEc2Region();
+    cachedClient = new AnthropicBedrock({ awsRegion: region });
+  } else {
+    cachedClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  }
+  return cachedClient;
+}
 
 const CATEGORY_IDS = riskCriteria.map((c) => c.id).join(", ");
 
@@ -44,8 +77,9 @@ export async function analyzeContractImage(
   imageBase64: string,
   mediaType: string
 ): Promise<AnalyzedClause[]> {
+  const anthropic = await getClient();
   const message = await anthropic.messages.create({
-    model: "claude-sonnet-5",
+    model: USE_BEDROCK ? BEDROCK_MODEL : DIRECT_MODEL,
     max_tokens: 8192,
     system: SYSTEM_PROMPT,
     messages: [
