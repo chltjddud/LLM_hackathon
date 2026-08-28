@@ -23,34 +23,54 @@ export default function UploadPage() {
     }
   };
 
+  const convertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       setIsUploading(true);
       const file = e.target.files[0];
       
-      const formData = new FormData();
-      formData.append('file', file);
-      
       try {
-        setLoadingText('파일 업로드 중...');
-        const response = await fetch('/api/analyze_contract', {
+        setLoadingText('파일 읽는 중 (Base64 변환)...');
+        const base64 = await convertToBase64(file);
+        const mediaType = file.type || 'application/pdf';
+        
+        setLoadingText('협상 방 생성 중...');
+        const response = await fetch('/api/session', {
           method: 'POST',
-          body: formData,
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            imageBase64: base64,
+            mediaType: mediaType,
+          }),
         });
         
         if (!response.ok) {
           const errJson = await response.json().catch(() => null);
-          const errMsg = errJson?.error || errJson?.detail || '계약서 분석 서버에서 오류가 발생했습니다.';
+          const errMsg = errJson?.error || '계약서 분석 및 세션 생성 중 오류가 발생했습니다.';
           throw new Error(errMsg);
         }
         
-        setLoadingText('조항 분석 및 결과 생성 중...');
         const data = await response.json();
         
-        // Save result to session storage
+        // Save clauses directly to sessionStorage
         sessionStorage.setItem('analysisResult', JSON.stringify(data));
         
-        router.push('/result');
+        // Redirect to the real-time negotiation and signature page
+        router.push(`/session/${data.session.id}?role=tenant`);
       } catch (error: any) {
         alert(error.message || '분석 중 오류가 발생했습니다. 다시 시도해 주세요.');
         setIsUploading(false);
@@ -90,7 +110,7 @@ export default function UploadPage() {
         <div className="mb-10 text-center">
           <h1 className="text-3xl md:text-4xl font-bold mb-4">계약서 업로드</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            분석할 계약서 파일(PDF, PNG, JPG)을 올려주세요. 여러 장인 경우 모두 올려주시면 됩니다.
+            분석할 계약서 PDF 파일(.pdf)을 올려주세요.
           </p>
           <div className="mt-4 inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 px-4 py-2 rounded-lg text-sm border border-blue-200 dark:border-blue-800">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -101,7 +121,7 @@ export default function UploadPage() {
         </div>
 
         {/* Upload Area */}
-        <label className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 transition-colors bg-white dark:bg-gray-800 rounded-3xl p-12 flex flex-col text-center cursor-pointer group">
+        <label htmlFor="contract-file" className="border-2 border-dashed border-gray-300 dark:border-gray-700 hover:border-blue-500 transition-colors bg-white dark:bg-gray-800 rounded-3xl p-12 flex flex-col text-center cursor-pointer group">
           <div className="w-20 h-20 bg-blue-50 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
             <svg className="w-10 h-10 text-blue-600 dark:text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
@@ -109,9 +129,9 @@ export default function UploadPage() {
           </div>
           <h3 className="text-2xl font-semibold mb-2">클릭하여 파일 선택</h3>
           <p className="text-gray-600 dark:text-gray-400 mb-6">또는 이 곳으로 파일을 드래그 앤 드롭 하세요.</p>
-          <p className="text-xs text-gray-500">지원 형식: PDF, PNG, JPG (최대 10MB)</p>
+          <p className="text-xs text-gray-500">지원 형식: PDF (최대 10MB)</p>
           
-          <input type="file" className="hidden" multiple accept=".pdf,.png,.jpg,.jpeg" onChange={handleFileUpload} />
+          <input id="contract-file" type="file" className="hidden" accept=".pdf" onChange={handleFileUpload} />
         </label>
 
         <div className="mt-12 flex justify-between items-center border-t border-gray-200 dark:border-gray-800 pt-6">
@@ -124,3 +144,4 @@ export default function UploadPage() {
     </main>
   );
 }
+

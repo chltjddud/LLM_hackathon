@@ -23,3 +23,11 @@ __pycache__/
 Thumbs.db
 
 secrets_for_team.zip
+*.local
+
+# Node.js
+node_modules/
+.next/
+deploy.tar.gz
+.env.local
+.env.*

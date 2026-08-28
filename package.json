@@ -1,0 +1,11 @@
+{
+  "name": "contract-shield-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npm run dev --prefix shield-web -- -p 3001",
+    "start": "npm run start --prefix shield-web -- -p 3001",
+    "build": "npm run build --prefix shield-web",
+    "install:all": "npm install --prefix shield-web"
+  }
+}
