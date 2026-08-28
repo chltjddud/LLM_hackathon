@@ -4,8 +4,8 @@ import Link from 'next/link';
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-[#F9FAFC] flex justify-center">
-      <main className="w-full max-w-md bg-[#F9FAFC] text-gray-900 flex flex-col relative pb-10 shadow-sm min-h-screen">
+    <div className="min-h-screen bg-[#F9FAFC] lg:bg-[#EEECF9] flex justify-center lg:py-10">
+      <main className="w-full max-w-md bg-[#F9FAFC] text-gray-900 flex flex-col relative pb-10 shadow-sm min-h-screen lg:min-h-0 lg:rounded-[32px] lg:border lg:border-[#E5E0F5] lg:shadow-xl">
         {/* Header */}
         <header className="flex items-center justify-between px-6 pt-10 pb-4">
           <h1 className="text-[26px] font-extrabold tracking-tight" style={{ color: '#6542F1' }}>SIGNAL</h1>

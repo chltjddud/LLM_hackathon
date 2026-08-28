@@ -34,8 +34,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex min-h-screen justify-center bg-[#F9FAFC]">
-      <main className="flex min-h-screen w-full max-w-md flex-col px-6 pt-16 pb-10">
+    <div className="flex min-h-screen justify-center bg-[#F9FAFC] lg:bg-[#EEECF9] lg:py-10">
+      <main className="flex min-h-screen w-full max-w-md flex-col px-6 pt-16 pb-10 bg-[#F9FAFC] lg:min-h-0 lg:rounded-[32px] lg:border lg:border-[#E5E0F5] lg:shadow-xl">
         <h1
           className="text-[26px] font-extrabold tracking-tight"
           style={{ color: "#6542F1" }}
