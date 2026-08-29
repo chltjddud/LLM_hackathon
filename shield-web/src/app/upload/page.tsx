@@ -112,7 +112,7 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9FAFC] flex justify-center">
+    <div className="min-h-screen bg-[#F4F1FF] flex justify-center">
       <main className="w-full max-w-md bg-[#F9FAFC] text-gray-900 flex flex-col relative pb-10 shadow-sm min-h-screen">
         {/* Navigation */}
         <header className="flex items-center justify-between px-6 pt-10 pb-4">
@@ -135,7 +135,12 @@ export default function UploadPage() {
           </div>
         </header>
 
-        <div className="px-6 border-b border-gray-200/60 mx-6 mb-8"></div>
+        <div className="px-6 border-b border-gray-200/60 mx-6 mb-4"></div>
+        <div className="px-6 mb-6">
+          <button onClick={() => router.back()} aria-label="뒤로 가기" className="p-1 -ml-1 text-gray-700 hover:text-gray-900 transition-colors">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+          </button>
+        </div>
 
         <div className="px-6">
           <div className="mb-8">
@@ -211,7 +216,15 @@ export default function UploadPage() {
                 <>
                   <div className="border-t border-gray-100 mb-8 -mx-1"></div>
                   <div className="flex flex-col items-center justify-center pb-2">
-                    <div className="w-[42px] h-[42px] border-[3px] border-[#F4F1FF] border-t-[#D4C8F6] rounded-full animate-spin mb-6"></div>
+                    <img
+                      src="/mascot.png"
+                      alt="분석 중 마스코트"
+                      width={190}
+                      height={190}
+                      loading="eager"
+                      decoding="async"
+                      className="w-[190px] h-[190px] object-contain mb-6 animate-mascot"
+                    />
                     <h3 className="text-[19px] font-bold text-gray-900 mb-2 tracking-tight">계약서 분석 중</h3>
                     <p className="text-[14px] text-gray-500 font-medium text-center leading-relaxed mb-6">
                       법령·판례를 기준으로<br />

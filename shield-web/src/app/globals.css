@@ -15,13 +15,29 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans), "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), "Apple SD Gothic Neo", "Malgun Gothic", Arial, Helvetica, sans-serif;
+}
+
+/* 로그인 화면 페이드 인 (스플래시 이후 자연스러운 전환) */
+@keyframes loginFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 분석 중 마스코트 애니메이션: 통통 튀며 살짝 흔들림 */
+@keyframes mascotBob {
+  0%   { transform: translateY(0) rotate(-3deg); }
+  50%  { transform: translateY(-14px) rotate(3deg); }
+  100% { transform: translateY(0) rotate(-3deg); }
+}
+.animate-mascot {
+  animation: mascotBob 1.2s ease-in-out infinite;
+  will-change: transform;
 }
 

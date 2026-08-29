@@ -1,67 +1,149 @@
 import { NextRequest } from "next/server";
 import crypto from "crypto";
 
-// JWT 토큰을 Supabase JWT Secret으로 로컬에서 직접 검증합니다.
-// 네트워크 호출이 없으므로 타임아웃 문제가 발생하지 않습니다.
-function verifySupabaseJWT(token: string): { sub: string; email?: string } | null {
+type JwtPayload = { sub: string; email?: string; exp?: number };
+
+// ---- JWKS 캐시 (Supabase의 ES256 공개키) ----
+type Jwk = { kid: string; kty: string; crv?: string; x?: string; y?: string; alg?: string };
+let jwksCache: { keys: Jwk[]; fetchedAt: number } | null = null;
+const JWKS_TTL_MS = 10 * 60 * 1000; // 10분 캐시
+
+async function getJwks(): Promise<Jwk[]> {
+  if (jwksCache && Date.now() - jwksCache.fetchedAt < JWKS_TTL_MS) {
+    return jwksCache.keys;
+  }
+  const base = process.env.SUPABASE_URL;
+  if (!base) return [];
   try {
-    const parts = token.split(".");
-    if (parts.length !== 3) return null;
+    const res = await fetch(`${base}/auth/v1/.well-known/jwks.json`, {
+      headers: process.env.SUPABASE_ANON_KEY ? { apikey: process.env.SUPABASE_ANON_KEY } : {},
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return jwksCache?.keys ?? [];
+    const json = (await res.json()) as { keys?: Jwk[] };
+    jwksCache = { keys: json.keys ?? [], fetchedAt: Date.now() };
+    return jwksCache.keys;
+  } catch {
+    return jwksCache?.keys ?? [];
+  }
+}
 
-    const [headerB64, payloadB64, signatureB64] = parts;
-    const secret = process.env.SUPABASE_JWT_SECRET;
-    if (!secret) {
-      console.error("[verifyJWT] SUPABASE_JWT_SECRET is not set!");
-      return null;
-    }
+function b64urlToBuf(s: string): Buffer {
+  return Buffer.from(s, "base64url");
+}
 
-    // Base64로 인코딩된 시크릿을 버퍼로 변환
-    const secretBuffer = Buffer.from(secret, "base64");
+// JWS ES256 서명(R||S, 64바이트)을 DER로 변환해서 crypto.verify에 넘긴다
+function joseToDer(sig: Buffer): Buffer {
+  const r = sig.subarray(0, 32);
+  const s = sig.subarray(32, 64);
+  const trim = (b: Buffer) => {
+    let i = 0;
+    while (i < b.length - 1 && b[i] === 0) i++;
+    let out = b.subarray(i);
+    if (out[0] & 0x80) out = Buffer.concat([Buffer.from([0]), out]);
+    return out;
+  };
+  const rt = trim(r);
+  const st = trim(s);
+  const seqLen = 2 + rt.length + 2 + st.length;
+  return Buffer.concat([
+    Buffer.from([0x30, seqLen]),
+    Buffer.from([0x02, rt.length]),
+    rt,
+    Buffer.from([0x02, st.length]),
+    st,
+  ]);
+}
 
-    // HMAC-SHA256으로 서명 검증
-    const data = `${headerB64}.${payloadB64}`;
-    const expectedSig = crypto
-      .createHmac("sha256", secretBuffer)
+async function verifyEs256(
+  headerB64: string,
+  payloadB64: string,
+  signatureB64: string,
+  kid: string
+): Promise<boolean> {
+  const keys = await getJwks();
+  const jwk = keys.find((k) => k.kid === kid) ?? keys.find((k) => k.kty === "EC");
+  if (!jwk || jwk.kty !== "EC" || !jwk.x || !jwk.y) return false;
+  try {
+    const keyObject = crypto.createPublicKey({
+      key: { kty: "EC", crv: jwk.crv || "P-256", x: jwk.x, y: jwk.y },
+      format: "jwk",
+    });
+    const der = joseToDer(b64urlToBuf(signatureB64));
+    return crypto.verify(
+      "sha256",
+      Buffer.from(`${headerB64}.${payloadB64}`),
+      { key: keyObject, dsaEncoding: "der" },
+      der
+    );
+  } catch {
+    return false;
+  }
+}
+
+function verifyHs256(headerB64: string, payloadB64: string, signatureB64: string): boolean {
+  const secret = process.env.SUPABASE_JWT_SECRET;
+  if (!secret) return false;
+  const data = `${headerB64}.${payloadB64}`;
+  // Supabase JWT secret은 보통 원문 문자열 그대로 HMAC 키로 쓰인다
+  const raw = crypto.createHmac("sha256", secret).update(data).digest("base64url");
+  if (raw === signatureB64) return true;
+  // 혹시 base64 인코딩된 시크릿인 경우도 시도
+  try {
+    const b64 = crypto
+      .createHmac("sha256", Buffer.from(secret, "base64"))
       .update(data)
       .digest("base64url");
+    return b64 === signatureB64;
+  } catch {
+    return false;
+  }
+}
 
-    if (expectedSig !== signatureB64) {
-      console.log("[verifyJWT] Signature mismatch");
-      return null;
-    }
+async function verifySupabaseJWT(token: string): Promise<JwtPayload | null> {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [headerB64, payloadB64, signatureB64] = parts;
 
-    // 페이로드 디코딩
-    const payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf-8"));
-
-    // 만료 시간 확인
-    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
-      console.log("[verifyJWT] Token expired");
-      return null;
-    }
-
-    if (!payload.sub) return null;
-
-    return { sub: payload.sub, email: payload.email };
-  } catch (err) {
-    console.error("[verifyJWT] Error verifying token:", err);
+  let header: { alg?: string; kid?: string };
+  let payload: JwtPayload;
+  try {
+    header = JSON.parse(b64urlToBuf(headerB64).toString("utf-8"));
+    payload = JSON.parse(b64urlToBuf(payloadB64).toString("utf-8"));
+  } catch {
     return null;
   }
+
+  // 만료 확인
+  if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+  if (!payload.sub) return null;
+
+  let ok = false;
+  if (header.alg === "ES256") {
+    ok = await verifyEs256(headerB64, payloadB64, signatureB64, header.kid || "");
+  } else if (header.alg === "HS256") {
+    ok = verifyHs256(headerB64, payloadB64, signatureB64);
+  } else {
+    // 알 수 없는 alg: ES256 -> HS256 순으로 시도
+    ok =
+      (await verifyEs256(headerB64, payloadB64, signatureB64, header.kid || "")) ||
+      verifyHs256(headerB64, payloadB64, signatureB64);
+  }
+
+  if (!ok) return null;
+  return { sub: payload.sub, email: payload.email };
 }
 
 // 프론트에서 Supabase Auth로 로그인 후 발급받은 access token을
 // "Authorization: Bearer <token>" 헤더로 보내면 그 사용자를 식별한다.
-// 네트워크 호출 없이 로컬에서 JWT를 검증하므로 타임아웃 문제가 없다.
 export async function getUserFromRequest(
   req: NextRequest
 ): Promise<{ id: string; email: string | undefined } | null> {
   const authHeader = req.headers.get("authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return null;
-  }
+  if (!authHeader?.startsWith("Bearer ")) return null;
 
   const token = authHeader.slice("Bearer ".length);
-  const payload = verifySupabaseJWT(token);
-
+  const payload = await verifySupabaseJWT(token);
   if (!payload) return null;
 
   return { id: payload.sub, email: payload.email };

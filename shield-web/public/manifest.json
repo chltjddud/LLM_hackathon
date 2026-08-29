@@ -1,6 +1,6 @@
 {
-  "name": "계약방패",
-  "short_name": "계약방패",
+  "name": "SIGNAL",
+  "short_name": "SIGNAL",
   "description": "AI 기반 계약서 분석 및 전자 서명 서비스",
   "start_url": "/",
   "display": "standalone",

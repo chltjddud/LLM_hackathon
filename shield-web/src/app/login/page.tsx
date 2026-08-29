@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Fredoka } from 'next/font/google';
@@ -10,12 +10,24 @@ const fredoka = Fredoka({ subsets: ['latin'], weight: ['600', '700'] });
 
 export default function LoginPage() {
   const router = useRouter();
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashFading, setSplashFading] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [userName, setUserName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 로그인 화면 전 스플래시(첫화면)를 1.5초 표시 후 부드럽게 페이드아웃
+  useEffect(() => {
+    const fadeTimer = setTimeout(() => setSplashFading(true), 1500); // 1.5초 뒤 페이드 시작
+    const removeTimer = setTimeout(() => setShowSplash(false), 2100); // 0.6초 페이드 후 제거
+    return () => {
+      clearTimeout(fadeTimer);
+      clearTimeout(removeTimer);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -75,8 +87,25 @@ export default function LoginPage() {
     }
   };
 
+  if (showSplash) {
+    return (
+      <div
+        className={`fixed inset-0 z-[999] bg-white flex justify-center items-center transition-opacity duration-600 ease-in-out ${
+          splashFading ? 'opacity-0' : 'opacity-100'
+        }`}
+        style={{ transitionDuration: '600ms' }}
+      >
+        <img
+          src="/splash.png"
+          alt="SIGNAL"
+          className="w-full max-w-md h-full object-contain"
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#F9FAFC] flex justify-center items-center px-4">
+    <div className="min-h-screen bg-[#F4F1FF] flex justify-center items-center px-4 animate-[loginFadeIn_0.5s_ease-out]">
       <main className="w-full max-w-md bg-white text-gray-900 flex flex-col rounded-[32px] shadow-[0_8px_30px_rgb(0,0,0,0.03)] border border-[#F3F0FF] p-8 py-12 justify-center">
         
         {/* Dynamic Header based on state */}

@@ -122,7 +122,7 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#F9FAFC] flex flex-col items-center justify-center max-w-md mx-auto">
+      <div className="min-h-screen bg-[#F4F1FF] flex flex-col items-center justify-center">
         <div className="w-12 h-12 border-4 border-gray-200 border-t-[#6542F1] rounded-full animate-spin mb-4"></div>
       </div>
     );
@@ -136,7 +136,7 @@ export default function Home() {
   const completedSessions = sessions.filter(s => s.status === 'completed');
 
   return (
-    <div className="min-h-screen bg-[#F9FAFC] flex justify-center">
+    <div className="min-h-screen bg-[#F4F1FF] flex justify-center">
       <main className="w-full max-w-md bg-[#F9FAFC] text-gray-900 flex flex-col relative pb-10 shadow-sm min-h-screen">
         
         {/* Header */}
@@ -263,11 +263,10 @@ export default function Home() {
             {completedSessions.length > 0 ? (
               completedSessions.map((session) => {
                 const badge = getStatusTextAndBadge(session.status);
-                const userRole = session.landlord_user_id === user.id ? 'landlord' : 'tenant';
                 return (
                   <div
                     key={session.id}
-                    onClick={() => router.push(`/session/${session.id}?role=${userRole}`)}
+                    onClick={() => window.open(`/api/session/${session.id}/final-pdf`, '_blank', 'noopener,noreferrer')}
                     className="bg-white border border-gray-100 rounded-[20px] p-5 shadow-[0_2px_12px_rgba(0,0,0,0.03)] flex items-center justify-between cursor-pointer hover:border-gray-200 transition-colors"
                   >
                     <div className="flex items-center gap-4">
